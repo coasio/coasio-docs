@@ -1,0 +1,172 @@
+---
+title: Perform Asynchronous TCP Operations
+description: Build asynchronous TCP servers and clients using Coasio's networking API.
+---
+
+# Perform Asynchronous TCP Operations
+
+This guide covers how to implement high-throughput asynchronous TCP servers and clients using Coasio's [`coasio::net::tcp`](file:///C:/dev/cpp/coasio/include/coasio/net/tcp.hpp) abstractions.
+
+---
+
+## 1. Purpose
+
+Network programming requires non-blocking socket handling so that waiting for network packets does not starve application threads. Coasio integrates Asio's socket drivers directly with C++23 coroutines, allowing you to write linear, sequential-looking networking code while maintaining non-blocking performance.
+
+---
+
+## 2. Prerequisites
+
+* Basic knowledge of TCP/IP networking (listeners, sockets, endpoints).
+* [`coasio::task<T>`](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/tasks.mdx) and `std::expected`.
+
+---
+
+## 3. Example: Asynchronous Echo Server
+
+```cpp
+#include <iostream>
+#include <string>
+#include <vector>
+#include <coasio.hpp>
+#include <coasio/net/ip_address.hpp>
+#include <coasio/net/tcp.hpp>
+
+using namespace coasio::net;
+
+// Coroutine handling an individual connected client session
+coasio::task<void> handle_session(tcp::socket sock) {
+    std::vector<char> buffer(1024);
+
+    for (;;) {
+        // Read data into the contiguous buffer
+        auto read_res = co_await sock.read_some(buffer);
+        if (!read_res) {
+            // EOF or client disconnection returns an error code
+            break;
+        }
+
+        size_t bytes_read = *read_res;
+        if (bytes_read == 0) break;
+
+        // Echo the exact bytes back to the client
+        auto write_res = co_await sock.write(
+            std::span{buffer.data(), bytes_read}
+        );
+        if (!write_res) {
+            std::cerr << "Write failed: " << write_res.error().message() << "\n";
+            break;
+        }
+    }
+
+    sock.close();
+    co_return;
+}
+
+// Main server loop accepting incoming connections
+coasio::task<void> echo_server(uint16_t port) {
+    auto ep = tcp::endpoint{ip_address::v4_any(), port};
+    
+    // Bind and listen
+    auto maybe_listener = tcp::listener::bind(ep, /*reuse_address=*/true);
+    if (!maybe_listener) {
+        std::cerr << "Failed to bind: " << maybe_listener.error().message() << "\n";
+        co_return;
+    }
+
+    auto listener = std::move(*maybe_listener);
+    if (auto res = listener.listen(); !res) {
+        std::cerr << "Listen failed: " << res.error().message() << "\n";
+        co_return;
+    }
+
+    std::cout << "Echo server listening on port " << port << "...\n";
+
+    for (;;) {
+        // Asynchronously accept an incoming TCP socket
+        auto accept_res = co_await listener.accept();
+        if (!accept_res) {
+            std::cerr << "Accept error: " << accept_res.error().message() << "\n";
+            break;
+        }
+
+        // Spawn a background task for each client connection
+        coasio::spawn(handle_session(std::move(*accept_res)));
+    }
+
+    co_return;
+}
+
+int main() {
+    coasio::runtime rt;
+    rt.block_on(echo_server(8080));
+    return 0;
+}
+```
+
+---
+
+## 4. Connecting as a Client
+
+Connecting to a remote host is equally concise with `connect_to`:
+
+```cpp
+coasio::task<void> tcp_client() {
+    // Resolves host:port and connects in one operation
+    auto maybe_socket = co_await tcp::socket::connect_to("127.0.0.1:8080");
+    if (!maybe_socket) {
+        std::cerr << "Connection failed: " << maybe_socket.error().message() << "\n";
+        co_return;
+    }
+
+    auto sock = std::move(*maybe_socket);
+    
+    // Send data
+    std::string msg = "Hello from Coasio!";
+    co_await sock.write(msg);
+
+    // Read response
+    std::string reply(64, '\0');
+    auto n = co_await sock.read_some(reply);
+    if (n) {
+        reply.resize(*n);
+        std::cout << "Server replied: " << reply << "\n";
+    }
+
+    co_return;
+}
+```
+
+---
+
+## 5. Buffer Concepts & Overloads
+
+Coasio socket functions accept any contiguous range of byte-like elements (`char`, `unsigned char`, `std::byte`):
+
+| Method | Behavior | Return Type |
+| :--- | :--- | :--- |
+| `read(buffer)` | Reads until the buffer is **completely filled** or an error/EOF occurs. | `std::expected<size_t, std::error_code>` |
+| `read_some(buffer)` | Reads **at least 1 byte**, up to buffer capacity, then returns immediately. | `std::expected<size_t, std::error_code>` |
+| `write(buffer)` | Writes all bytes in the buffer until fully transmitted. | `std::expected<size_t, std::error_code>` |
+| `write_some(buffer)` | Writes as many bytes as the OS socket buffer accepts without blocking. | `std::expected<size_t, std::error_code>` |
+
+---
+
+## 6. Semantics & Error Handling
+
+* **Non-throwing I/O:** All socket operations return `std::expected<T, std::error_code>`. Disconnections or EOF return `asio::error::eof` rather than throwing C++ exceptions.
+* **Cancellation:** If the enclosing coroutine's cancellation scope is triggered while a socket operation is pending (e.g. during `accept()` or `read()`), the underlying Asio operation is cancelled via `asio::cancellation_signal` and returns `coasio::error::cancelled` or `asio::error::operation_aborted`.
+
+---
+
+## 7. Limitations
+
+* **Buffer Lifetime:** You must ensure that the buffer passed to `read` or `write` remains alive and valid until the `co_await` expression resumes.
+* **Full duplex operations:** While TCP is full-duplex, do not initiate two concurrent `read` operations on the same socket from multiple coroutines simultaneously.
+
+---
+
+## 8. Related Pages
+
+* [Networking Reference](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/networking.mdx) — Full API reference for TCP and UDP classes.
+* [Cancellation](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/cancellation.mdx) — How network cancellation scopes work.

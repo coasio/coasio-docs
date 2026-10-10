@@ -1,0 +1,62 @@
+---
+title: API Reference Overview
+description: Overview of Coasio public interfaces, runtime configuration, and Doxygen documentation.
+---
+
+# API Reference Overview
+
+This reference section provides precise technical specifications for Coasio's public interfaces, runtime options, and error categories.
+
+---
+
+## 1. Modules and Namespaces
+
+| Namespace / Module | Header | Purpose |
+| :--- | :--- | :--- |
+| **[`coasio`](file:///C:/dev/cpp/coasio/include/coasio.hpp)** | `<coasio.hpp>` | Core runtime, `task<T>`, `spawn`, `block_on`. |
+| **[`coasio::time`](file:///C:/dev/cpp/coasio/include/coasio/time.hpp)** | `<coasio/time.hpp>` | Timers, `time::sleep`, time points. |
+| **[`coasio::net`](file:///C:/dev/cpp/coasio/include/coasio/net/tcp.hpp)** | `<coasio/net/tcp.hpp>`, `<coasio/net/udp.hpp>` | TCP and UDP sockets, listeners, endpoints, and resolvers. |
+| **[`coasio::filesystem`](file:///C:/dev/cpp/coasio/include/coasio/filesystem.hpp)** | `<coasio/filesystem.hpp>`, `<coasio/filesystem/file.hpp>` | Stream files, random access files, path operations. |
+| **[`coasio::sync`](file:///C:/dev/cpp/coasio/include/coasio/sync/semaphore.hpp)** | `<coasio/sync/semaphore.hpp>`, `<coasio/sync/mutex.hpp>`, `<coasio/sync/oneshot.hpp>` | Coroutine synchronization primitives and channels. |
+
+---
+
+## 2. Runtime Configuration (`runtime_builder`)
+
+The [`coasio::runtime_builder`](file:///C:/dev/cpp/coasio/include/coasio/runtime.hpp#L395) class configures and instantiates the runtime:
+
+```cpp
+#include <coasio.hpp>
+
+coasio::runtime rt = coasio::runtime_builder{}
+    .set_worker_count(8)           // Number of coroutine worker threads
+    .set_io_worker_count(2)        // Number of dedicated Asio I/O threads
+    .set_blocking_pool_size(4)     // Size of the background blocking pool
+    .build();
+```
+
+### Configuration Options
+
+| Builder Method | Default Value | Description |
+| :--- | :--- | :--- |
+| `set_worker_count(size_t)` | `std::thread::hardware_concurrency()` (min 1) | The number of OS threads running coroutines via the work-stealing scheduler. |
+| `set_io_worker_count(size_t)` | `1` | The number of threads executing Asio's `io_context::run()` for socket and timer events. |
+| `set_blocking_pool_size(size_t)` | `1` | The thread pool capacity dedicated to `spawn_blocking` and filesystem operations. |
+
+---
+
+## 3. Doxygen Documentation
+
+For an exhaustive, symbol-by-symbol index generated directly from C++ comments and declarations, consult the Doxygen reference documentation:
+
+* [Browse Doxygen Reference (Local Build)](file:///C:/dev/cpp/coasio/build/docs/html/index.html) *(generated when building with Doxygen enabled)*
+* [Repository Source Code](https://github.com/coasio/coasio)
+
+---
+
+## 4. Reference Topics
+
+* **[Error Handling](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/errors.mdx)** — `coasio::error`, `std::error_code` integration, and exception rules.
+* **[Cancellation Semantics](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/cancellation.mdx)** — `cancel_scope`, `cancel_guard`, and Asio slot bindings.
+* **[Networking APIs](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/networking.mdx)** — `tcp::listener`, `tcp::socket`, `udp::socket`.
+* **[Filesystem APIs](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/filesystem.mdx)** — `file`, `random_access_file`, `open_options`.

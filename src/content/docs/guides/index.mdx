@@ -1,0 +1,29 @@
+---
+title: Guides Overview
+description: Practical recipes and step-by-step guides for programming with Coasio.
+---
+
+# Guides Overview
+
+The guides section provides practical, solution-oriented recipes for common asynchronous programming tasks using Coasio.
+
+Each guide is structured around a concrete programming problem and shows full, self-contained examples.
+
+---
+
+## Available Guides
+
+* **[Run Several Tasks Concurrently](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/concurrent-tasks.mdx)**
+  Learn how to fan-out background work with `spawn`, join multiple tasks, and protect shared state with `coasio::sync::semaphore` and `coasio::sync::mutex`.
+
+* **[Perform Asynchronous TCP Operations](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/tcp-operations.mdx)**
+  Build asynchronous TCP clients and servers using `tcp::listener` and `tcp::socket`, with connection handling and buffer streaming.
+
+* **[Work with Files Asynchronously](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/file-operations.mdx)**
+  Read and write files asynchronously using `coasio::filesystem::file`, `random_access_file`, and filesystem utilities.
+
+* **[Execute Blocking Work Safely](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/blocking-work.mdx)**
+  Offload blocking third-party library calls and heavy CPU operations to Coasio's dedicated blocking pool using `spawn_blocking`.
+
+* **[Combinators and Channels](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/combinators-and-channels.mdx)**
+  Use one-shot channels (`make_oneshot`) for message passing between tasks and understand future combinators.

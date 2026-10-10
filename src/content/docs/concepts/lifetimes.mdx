@@ -1,0 +1,139 @@
+---
+title: Lifetimes and Safe Shutdown
+description: Coroutine frame lifetimes, avoiding lambda capture pitfalls, and runtime shutdown semantics.
+---
+
+# Lifetimes and Safe Shutdown
+
+Understanding object lifetimes is critical in asynchronous coroutines. Unlike regular functions where variables exist on the stack until return, coroutines suspend and resume asynchronously, often outliving their callers.
+
+---
+
+## 1. Purpose
+
+This page explains:
+1. How coroutine frame lifetimes are managed.
+2. The critical C++ pitfall: **temporary coroutine lambdas with dangling captures**.
+3. The two safe idiomatic patterns for capturing state.
+4. What happens when a [`coasio::runtime`](file:///C:/dev/cpp/coasio/include/coasio/runtime.hpp) object is destroyed.
+
+---
+
+## 2. Prerequisites
+
+* [`coasio::task<T>`](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/tasks.mdx) and move semantics.
+* Familiarity with C++ lambda closures.
+
+---
+
+## 3. The Critical Pitfall: Coroutine Lambdas & Temporary Closures
+
+:::caution
+**Never use lambda captures with temporary coroutine lambdas in C++.**
+
+When a lambda returns a `task<T>`, the lambda object's member variables store its captures. If the lambda is a temporary passed directly into `spawn(...)`, the lambda closure object is destroyed at the end of the full-expression (the semicolon `;`), leaving the coroutine frame with a **dangling `this` pointer**. Resuming the coroutine after suspension will cause **undefined behavior or a `SIGSEGV`**, even when capturing by value (`std::shared_ptr`).
+:::
+
+### Dangerous (Causes Undefined Behavior / Segfault)
+
+```cpp
+auto state = std::make_shared<MyState>();
+
+// BUG: The lambda closure is destroyed at the end of this full expression!
+rt.spawn([state]() -> coasio::task<void> {
+    co_await coasio::time::sleep(10ms);
+    state->do_work(); // CRASH / USE-AFTER-FREE: 'this' pointer is dangling!
+});
+```
+
+---
+
+## 4. Safe Alternatives
+
+### Option 1: Pass State as Function Arguments (Recommended)
+
+Arguments passed to a coroutine are moved or copied directly into the **heap-allocated coroutine frame**. As long as the coroutine is suspended or running, its frame keeps arguments alive:
+
+```cpp
+auto state = std::make_shared<MyState>();
+
+// SAFE: 'state' is copied into the coroutine frame as an argument
+rt.spawn([](std::shared_ptr<MyState> s) -> coasio::task<void> {
+    co_await coasio::time::sleep(10ms);
+    s->do_work(); // Fully valid and safe
+}(state));
+```
+
+### Option 2: C++23 Explicit Object Parameter (Deduced `this`)
+
+In C++23, you can declare an explicit object parameter `this auto self` by value. This instructs the compiler to copy the entire closure into the coroutine frame:
+
+```cpp
+auto state = std::make_shared<MyState>();
+
+// SAFE: Passing 'this auto self' by value copies the closure into the coroutine frame
+rt.spawn([state](this auto self) -> coasio::task<void> {
+    co_await coasio::time::sleep(10ms);
+    self.state->do_work(); // Fully valid and safe
+});
+```
+
+---
+
+## 5. Runtime Shutdown Semantics
+
+What happens when a `coasio::runtime` instance goes out of scope?
+
+Coasio implements **structured and graceful runtime teardown**:
+
+```text
+runtime::~runtime()
+   |
+   +--> 1. Traverse and cancel all live root trees (n->scope_raw_->cancel())
+   |
+   +--> 2. Wait on condition variable until all roots drain (live_roots_ == 0)
+   |
+   +--> 3. Reset and drain the blocking thread pool
+   |
+   +--> 4. Set stop_requested = true and unpark all workers
+   |
+   +--> 5. Reset Asio work_guard and poll remaining I/O handlers
+   |
+   +--> 6. Join I/O worker threads
+   |
+   +--> 7. Join coroutine worker threads
+```
+
+### Destruction Walkthrough
+
+1. **Root Cancellation:** The runtime iterates through its intrusive list of live root task trees (`roots_head_`) and invokes `cancel()` on each task's `cancel_scope`.
+2. **Drain Waiting:** The runtime waits on `roots_drained_cv_` until all root tasks have finished and unregistered themselves (`live_roots_ == 0`).
+3. **Blocking Pool Teardown:** The blocking pool (`detail::blocking::pool`) is destroyed, finishing any active blocking jobs and joining its worker threads.
+4. **Worker Shutdown:** Workers observe `stop_requested_`, exit their task loops, and their `std::thread` instances are joined.
+5. **I/O Loop Teardown:** The `asio::executor_work_guard` is released, remaining I/O completions are processed, and I/O worker threads are joined.
+
+---
+
+## 6. Lifetime Contracts & Guarantees
+
+| Object | Lifetime Contract | What Happens on Premature Destruction? |
+| :--- | :--- | :--- |
+| **`task<T>`** | Move-only. Owns the coroutine handle. | If destroyed before completion and not detached, the coroutine frame is immediately destroyed via `handle_.destroy()`. |
+| **`JoinHandle<T>`** | Move-only handle to a spawned root task. | If discarded without calling `join()`, the spawned root task continues running to completion in the background. |
+| **`coasio::runtime`** | Owns the worker threads and Asio context. | Destructor **blocks** until all live root tasks exit. It cancels all live tasks to ensure timely termination. |
+| **Coroutine Arguments** | Persist inside the coroutine frame. | Destroyed only after the coroutine finishes execution (reaches `final_suspend`). |
+| **Lambda Captures** | Live inside the temporary lambda closure. | Destroyed at the semicolon unless passed via arguments or explicit object parameter! |
+
+---
+
+## 7. Limitations
+
+* **Non-cooperative tasks during shutdown:** If a spawned task is stuck in an infinite CPU loop without suspension or fails to observe cancellation, `runtime::~runtime()` will block waiting for `live_roots_` to hit zero. Always ensure tasks have cooperative suspension points.
+* **References across suspension:** Never store raw pointers or references to local stack variables across a suspension point (`co_await`) unless the referenced object is guaranteed to outlive the suspension.
+
+---
+
+## 8. Related Pages
+
+* [Awaiting and Spawning](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/awaiting-and-spawning.mdx) — Managing background tasks with `JoinHandle`.
+* [Cancellation Semantics](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/cancellation.mdx) — How cancellation tokens propagate through task trees.

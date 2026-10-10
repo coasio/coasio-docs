@@ -1,0 +1,120 @@
+---
+title: Runtime Architecture and the Role of Asio
+description: How Asio's I/O event loop is isolated and bridged to Coasio's coroutine scheduler.
+---
+
+# Runtime Architecture and the Role of Asio
+
+This page details how Coasio integrates standalone Asio and why I/O polling is separated from coroutine task execution.
+
+---
+
+## 1. Design Motivation: Why Decouple I/O and Coroutines?
+
+In traditional Asio applications, completion handlers are invoked directly on the thread calling `io_context::run()`. When combining Asio with C++20/C++23 coroutines, naive implementations often resume coroutines on whatever thread executed the completion handler—meaning user coroutine code runs directly on the I/O event loop thread.
+
+This introduces major problems in production systems:
+1. **Event Starvation:** If a resumed coroutine performs compute-heavy work (e.g. JSON parsing or database record unpacking), the I/O thread is blocked from processing upcoming `epoll`/`kqueue`/IOCP network events.
+2. **Latency Spikes:** Incoming connections and socket reads stall while the I/O thread is occupied running application logic.
+
+Coasio resolves this by enforcing a strict **two-tier boundary**:
+* **Asio I/O Threads (`io_worker`):** Exclusively run `io_context::run()`. Their sole responsibility is servicing OS I/O events, firing timers, and disarming cancellation slots.
+* **Coroutine Worker Threads (`worker`):** Run the work-stealing scheduler and execute all user coroutine bodies.
+
+---
+
+## 2. The `async_op` Bridge
+
+The core bridge connecting Asio asynchronous operations to Coasio coroutines is [`coasio::detail::async_op`](file:///C:/dev/cpp/coasio/include/coasio/detail/async_op.hpp).
+
+### Implementation Walkthrough
+
+When a socket or timer method is called (e.g. `sock.read(buffer)`), it returns an instance of `asio_awaitable<Result, Initiator>`:
+
+```cpp
+template <typename Result, typename Initiator> 
+class asio_awaitable {
+    Initiator init_;
+    std::error_code ec_{};
+    std::shared_ptr<cancel_scope> scope_;
+    cancel_guard guard_;
+    asio::cancellation_signal sig_;
+    result_storage<Result> store_{};
+    // ...
+```
+
+### 1. Suspension (`await_suspend`)
+
+When the coroutine reaches `co_await`:
+```cpp
+void await_suspend(std::coroutine_handle<> h) noexcept {
+    runtime *rt = current_runtime();
+    worker *w = current_worker();
+
+    // 1. Arm cancellation guard to fire Asio cancellation signal
+    auto r = guard_.arm([this] { sig_.emit(asio::cancellation_type::all); });
+    if (r == cancel_guard::arm_result::already_cancelled) {
+        ec_ = coasio::error::cancelled;
+        runtime_schedule_in(rt, w, h);
+        return;
+    }
+
+    // 2. Launch the Asio async operation with bound cancellation slot
+    init_(asio::bind_cancellation_slot(
+        sig_.slot(), 
+        [this, h, w, rt](const std::error_code &ec, auto &&...result) noexcept {
+            guard_.disarm();
+            ec_ = ec;
+            if constexpr (!std::is_void_v<Result>) {
+                store_.value = std::move(std::get<0>(std::forward_as_tuple(result...)));
+            }
+            // 3. Reschedule coroutine back onto worker thread pool!
+            runtime_schedule_in(rt, w, h);
+        }));
+}
+```
+
+### 2. Resumption & Result Extraction (`await_resume`)
+
+When the rescheduled coroutine resumes on a worker thread:
+```cpp
+std::expected<Result, std::error_code> await_resume() noexcept {
+    guard_.disarm();
+    if (ec_) {
+        return std::unexpected(ec_);
+    }
+    if constexpr (std::is_void_v<Result>)
+        return {};
+    else
+        return std::move(store_.value);
+}
+```
+
+---
+
+## 3. The `executor_work_guard` Lifecycle
+
+To keep `io_context::run()` from returning when no I/O operations are currently pending, the `runtime` constructor creates an `executor_work_guard`:
+
+```cpp
+work_guard_(asio::make_work_guard(io_context_))
+```
+
+During runtime destruction:
+1. `work_guard_.reset()` is called once all live root tasks have drained.
+2. `io_context_.poll()` flushes any remaining completion handlers.
+3. The I/O worker threads cleanly exit `io_context::run()` and are joined.
+
+---
+
+## 4. Key Guarantees vs Non-Guarantees
+
+* **I/O Thread Cleanliness:** User coroutines are guaranteed **never** to execute on the I/O event loop thread.
+* **Worker Affinity:** Rescheduling via `runtime_schedule_in(rt, w, h)` attempts to place the resumed coroutine into the originating worker's queue to preserve cache locality, but peer workers may steal the task if the originating worker is busy.
+
+---
+
+## 5. Related Pages
+
+* [Scheduler Design & Work Stealing](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/scheduler-and-work-stealing.mdx)
+* [Coroutine & Cancellation Machinery](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/coroutine-and-cancellation.mdx)

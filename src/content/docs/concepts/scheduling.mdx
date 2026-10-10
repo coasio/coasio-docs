@@ -1,0 +1,120 @@
+---
+title: Scheduling and Worker Threads
+description: How Coasio schedules coroutines across worker threads with work stealing.
+---
+
+# Scheduling and Worker Threads
+
+Coasio employs a **two-tier execution model**: Asio handles I/O polling and asynchronous timers, while a dedicated pool of worker threads executes coroutines using a work-stealing scheduler.
+
+---
+
+## 1. Purpose
+
+In high-throughput networked applications, mixing compute-heavy coroutine logic directly on the I/O event loop thread can delay event notifications (such as `epoll`/IOCP completions) and cause network latency spikes.
+
+Coasio resolves this by decoupling:
+1. **I/O Worker Threads:** Run Asio's `io_context::run()` exclusively to poll network events and timers.
+2. **Coroutine Worker Threads:** Execute coroutine frames, compute tasks, and coroutine resumptions.
+
+---
+
+## 2. Prerequisites
+
+* Basic understanding of thread pools and cooperative concurrency.
+* Familiarity with [`coasio::runtime`](file:///C:/dev/cpp/coasio/include/coasio/runtime.hpp).
+
+---
+
+## 3. Example: Configuring the Runtime
+
+```cpp
+#include <iostream>
+#include <thread>
+#include <coasio.hpp>
+
+int main() {
+    // Customize scheduler sizing using runtime_builder
+    coasio::runtime rt = coasio::runtime_builder{}
+        .set_worker_count(4)          // 4 coroutine execution threads
+        .set_io_worker_count(1)       // 1 dedicated Asio I/O event loop thread
+        .set_blocking_pool_size(2)    // 2 threads for synchronous file/blocking work
+        .build();
+
+    rt.block_on([]() -> coasio::task<void> {
+        std::cout << "[Scheduler] Running coroutine on thread: " 
+                  << std::this_thread::get_id() << "\n";
+        co_return;
+    }());
+
+    return 0;
+}
+```
+
+---
+
+## 4. Explanation & Architecture
+
+### Two-Tier Threading Model
+
+```text
++-----------------------------------------------------------+
+|                      Coasio Runtime                       |
++-----------------------------------------------------------+
+         |                                         |
+         v                                         v
++------------------------+             +------------------------+
+|   I/O Worker Threads   |             | Coroutine Worker Pool  |
+|  (Asio io_context)     |             |  (Work-Stealing Pool)  |
++------------------------+             +------------------------+
+         |                                         |
+  Polls Sockets & Timers           Executes co_await & co_return
+         |                                         |
+         +--------[ Reschedule via async_op ]------+
+```
+
+1. **I/O Completion:** When an Asio asynchronous operation completes (e.g. socket read, sleep timer), the completion handler runs on an **I/O worker thread**.
+2. **Handoff:** Instead of running user coroutine code on the I/O thread, Coasio captures the target worker context and reschedules the suspended coroutine handle `std::coroutine_handle<>` back onto a **coroutine worker**.
+3. **Execution:** The coroutine resumes on a worker thread, keeping the I/O event loop completely free to service upcoming network packets.
+
+---
+
+## 5. User-Facing Guarantees vs. Implementation Details
+
+:::note[Important]
+To ensure your code remains forward-compatible, rely only on the **user-facing guarantees** promised below, not on internal scheduler mechanics.
+:::
+
+| Concept | User-Facing Guarantee | Internal Implementation Detail (Subject to change) |
+| :--- | :--- | :--- |
+| **Concurrency** | Multiple spawned tasks execute concurrently across available worker threads. | Number of workers defaults to `std::thread::hardware_concurrency()`. |
+| **Cooperative Yielding** | A coroutine yields control to other tasks only at suspension points (`co_await`). Long compute loops without suspension block that worker thread. | Workers employ per-worker circular task buffers (capacity 256) and a global FIFO fallback queue. |
+| **Work Stealing** | The scheduler attempts to balance load across worker threads automatically. | Idle workers randomly attempt to steal half the tasks from peer queues (`try_steal_into`). |
+| **Thread Affinity** | **No thread affinity is guaranteed.** A coroutine may suspend on worker $A$ and resume on worker $B$. | Resumption prefers worker locality when possible, but work stealing may migrate tasks. |
+| **Thread-Safe State** | Synchronizing shared state across spawned tasks requires synchronization primitives (`coasio::sync::mutex`, atomics). | Worker threads coordinate using standard mutexes and `std::condition_variable` parking. |
+
+---
+
+## 6. How Work Stealing Operates (Internals Overview)
+
+When a coroutine worker thread is looking for work:
+1. **Periodic Global Check:** Every 60 local pops, the worker checks the runtime's global queue to prevent starvation of globally scheduled tasks.
+2. **Local Queue Pop:** The worker attempts to pop a coroutine handle from its private ring-buffer queue.
+3. **Global Queue Pop:** If the local queue is empty, the worker locks and pops from the shared global queue.
+4. **Peer Stealing:** If both are empty, the worker attempts to acquire a peer worker's queue lock and steal half of its pending coroutine handles.
+5. **Parking:** If no work is found anywhere, the worker atomically parks itself on a condition variable until another thread enqueues work and calls `unpark()`.
+
+---
+
+## 7. Limitations
+
+* **No Preemption:** Coasio provides **cooperative multitasking**. A tight CPU loop (e.g. `while(true) {}`) will monopolize its worker thread. For long-running CPU calculations, offload them to [`coasio::spawn_blocking`](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/blocking-work.mdx) or periodically yield.
+* **Do not use thread-local storage for task state:** Because a coroutine can migrate between worker threads after suspension, thread-local variables (`thread_local`) cannot be used to store task-specific state.
+
+---
+
+## 8. Related Pages
+
+* [Lifetimes and Safe Shutdown](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/lifetimes.mdx) — Worker thread drainage during runtime destruction.
+* [Executing Blocking Work Safely](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/blocking-work.mdx) — Dedicated thread pool for blocking code.
+* [Internals: Scheduler Design](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/scheduler-and-work-stealing.mdx) — In-depth analysis of the work-stealing algorithm.

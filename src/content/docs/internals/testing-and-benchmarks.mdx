@@ -1,0 +1,137 @@
+---
+title: Testing and Benchmarking Methodology
+description: Architecture of the Catch2 test suite, stress testing, and verification strategies in Coasio.
+---
+
+# Testing and Benchmarking Methodology
+
+This document outlines the testing strategies, stress tests, and verification methodology used to maintain reliability and performance in Coasio.
+
+---
+
+## 1. Test Suite Structure
+
+Coasio uses the [Catch2](https://github.com/catchorg/Catch2) test framework for automated unit and integration testing under `tests/`:
+
+| Directory / File | Focus Area | What It Validates |
+| :--- | :--- | :--- |
+| [`tests/runtime_basic.cpp`](file:///C:/dev/cpp/coasio/tests/runtime_basic.cpp) | Core Runtime & Scheduler | `block_on` return values, worker thread ID isolation, multi-task completion, `JoinHandle` semantics, sleep deadlines, and clean runtime destruction. |
+| [`tests/blocking/spawn_blocking.cpp`](file:///C:/dev/cpp/coasio/tests/blocking/spawn_blocking.cpp) | Blocking Thread Pool | Task offloading, queue cancellation, exception propagation across threads, pool drainage. |
+| [`tests/sync/oneshot.cpp`](file:///C:/dev/cpp/coasio/tests/sync/oneshot.cpp) | One-Shot Channels | Value passing, dropped sender/receiver detection, concurrent send/receive races. |
+| [`tests/sync/semaphore.cpp`](file:///C:/dev/cpp/coasio/tests/sync/semaphore.cpp) | Asynchronous Semaphore | Permit acquisition, FIFO waiter wake-up, cancellation while waiting for permits, contention under concurrency. |
+| [`examples/smoke_test.cpp`](file:///C:/dev/cpp/coasio/examples/smoke_test.cpp) | Stress & Scale Testing | Throughput test creating and scheduling **1,000,000 coroutine tasks**. |
+
+---
+
+## 2. Key Verification Strategies
+
+### 1. Worker Thread Boundary Verification
+
+To verify that tasks actually run on background worker threads rather than the thread calling `spawn` or `block_on`:
+
+```cpp
+TEST_CASE("spawn runs on a worker thread, not the calling thread") {
+    coasio::runtime rt{};
+    std::atomic<std::thread::id> worker_id{};
+    auto main_id = std::this_thread::get_id();
+
+    auto h = rt.spawn([&worker_id]() -> coasio::task<void> {
+        worker_id.store(std::this_thread::get_id());
+        co_return;
+    }());
+
+    rt.block_on(h.join());
+    REQUIRE(worker_id.load() != std::thread::id{});
+    REQUIRE(worker_id.load() != main_id); // Proves background thread execution
+}
+```
+
+### 2. Cooperative Cancellation Verification
+
+Tests verify that aborting a task interrupts pending operations without corrupting child tasks:
+
+```cpp
+TEST_CASE("abort causes long sleep to return early") {
+    coasio::runtime rt{};
+    std::atomic sleep_was_cancelled{false};
+
+    auto h = rt.spawn([](std::atomic<bool> *swc) -> coasio::task<void> {
+        // Sleep for 60 minutes
+        const auto r = co_await coasio::time::sleep(std::chrono::minutes(60));
+        swc->store(!r.has_value());
+        co_return;
+    }(&sleep_was_cancelled));
+
+    std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    h.abort();
+    rt.block_on(h.join());
+
+    REQUIRE(sleep_was_cancelled.load()); // Proves sleep aborted within milliseconds
+}
+```
+
+### 3. Graceful Shutdown & Drain Verification
+
+Ensures that when `rt` goes out of scope, outstanding tasks are cancelled and destructors run before the runtime finishes destructing:
+
+```cpp
+TEST_CASE("runtime destruction cancels and cleans up all live tasks") {
+    std::atomic<bool> destroyed{false};
+    struct Guard {
+        std::atomic<bool> &flag;
+        ~Guard() { flag.store(true); }
+    };
+
+    {
+        coasio::runtime rt{};
+        rt.spawn([&]() -> coasio::task<void> {
+            Guard g{destroyed};
+            co_await coasio::time::sleep(std::chrono::seconds(60));
+            co_return;
+        }());
+        // Runtime destructor cancels the task and drains live roots
+    }
+
+    REQUIRE(destroyed.load()); // Proves RAII destructor executed cleanly
+}
+```
+
+---
+
+## 3. Running the Test Suite
+
+Enable testing and execute CTest from the build directory:
+
+```bash
+# Configure with test suite enabled
+cmake -B build -S . -DCOASIO_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug
+
+# Build the test executables
+cmake --build build --config Debug
+
+# Run the Catch2 tests via CTest
+ctest --test-dir build --output-on-failure -C Debug
+```
+
+---
+
+## 4. Scalability & Stress Testing
+
+The smoke test (`examples/smoke_test.cpp`) measures coroutine creation, scheduling, and destruction overhead by spawning 1,000,000 tasks:
+
+```bash
+cmake --build build --target smoke_test --config Release
+./build/examples/smoke_test
+```
+
+This verifies:
+* No memory leaks across one million coroutine frames.
+* Correct load balancing across worker queues and work stealing under heavy saturation.
+* Ring buffer queue overflow handling into the global fallback queue.
+
+---
+
+## 5. Related Pages
+
+* [Runtime Architecture & Asio](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/architecture-and-asio.mdx)
+* [Scheduler Design & Work Stealing](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/scheduler-and-work-stealing.mdx)

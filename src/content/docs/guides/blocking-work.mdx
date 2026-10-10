@@ -1,0 +1,126 @@
+---
+title: Execute Blocking Work Safely
+description: Offload CPU-intensive or legacy synchronous blocking calls using spawn_blocking.
+---
+
+# Execute Blocking Work Safely
+
+Coasio provides [`coasio::spawn_blocking`](file:///C:/dev/cpp/coasio/include/coasio/detail/blocking/spawn_blocking.hpp) to offload synchronous or CPU-intensive work to a dedicated thread pool without starving coroutine workers.
+
+---
+
+## 1. Purpose
+
+In an asynchronous runtime, coroutine worker threads must never be blocked by:
+* Heavy CPU-bound computation (e.g. image processing, cryptographic hashing, complex serialization).
+* Synchronous third-party libraries (e.g. SQLite queries, synchronous DNS lookups, legacy C SDKs).
+* Blocking OS system calls (e.g. `std::cin`, `sleep()`, synchronous POSIX file I/O).
+
+If a coroutine blocks a worker thread with synchronous code, other coroutines scheduled on that worker cannot run. `spawn_blocking` safely shifts the work to a separate thread pool.
+
+---
+
+## 2. Prerequisites
+
+* Basic understanding of thread pools.
+* [`coasio::task<T>`](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/tasks.mdx) and `std::expected`.
+
+---
+
+## 3. Example
+
+```cpp
+#include <chrono>
+#include <iostream>
+#include <thread>
+#include <coasio.hpp>
+
+// A simulated slow synchronous legacy function
+int legacy_compute(int input) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    return input * 2;
+}
+
+coasio::task<void> run_work() {
+    std::cout << "[Worker] Starting coroutine...\n";
+
+    // Offload the blocking call to the blocking pool
+    // spawn_blocking returns an awaiter yielding std::expected<int, std::error_code>
+    auto result = co_await coasio::spawn_blocking([] {
+        return legacy_compute(21);
+    });
+
+    if (result) {
+        std::cout << "[Worker] Computed result: " << *result << "\n";
+    } else {
+        std::cerr << "[Worker] Execution failed: " << result.error().message() << "\n";
+    }
+
+    co_return;
+}
+
+int main() {
+    // Configure runtime with 4 blocking threads
+    coasio::runtime rt = coasio::runtime_builder{}
+        .set_worker_count(2)
+        .set_blocking_pool_size(4)
+        .build();
+
+    rt.block_on(run_work());
+    return 0;
+}
+```
+
+---
+
+## 4. Explanation
+
+1. **`coasio::spawn_blocking(callable)`:**
+   * Wraps the callable in a control block and enqueues it onto the runtime's dedicated [`detail::blocking::pool`](file:///C:/dev/cpp/coasio/include/coasio/detail/blocking/pool.hpp).
+   * Suspends the calling coroutine without blocking the coroutine worker thread.
+   * Runs the callable on an available thread in the blocking thread pool.
+2. **Completion & Resumption:**
+   * When the callable completes, the result is captured.
+   * The coroutine handle is rescheduled onto the main Coasio worker pool via `runtime_schedule`.
+   * Control returns to the coroutine with `std::expected<T, std::error_code>`.
+
+---
+
+## 5. Cancellation & Exception Handling
+
+### Cancellation
+
+`spawn_blocking` integrates with Coasio's [`cancel_scope`](file:///C:/dev/cpp/coasio/include/coasio/cancel_scope.hpp):
+* **While queued:** If the enclosing task is cancelled *before* a blocking worker thread picks up the job, the job is dequeued and cancelled immediately. The `co_await` expression resumes with `std::unexpected(coasio::error::cancelled)`.
+* **While running:** Once execution has commenced on a blocking worker thread, the thread continues to finish the C++ function (threads cannot be forcefully interrupted safely in C++).
+
+### Exceptions
+
+If the callable throws an unhandled C++ exception:
+* The exception is captured inside the control block via `std::current_exception()`.
+* Upon resumption, `await_resume()` rethrows the captured exception on the calling coroutine.
+
+---
+
+## 6. Semantics & Guarantees
+
+| Behavior | Guarantee |
+| :--- | :--- |
+| **Thread Isolation** | Blocking functions run exclusively on threads dedicated to the blocking pool, never on coroutine workers or Asio I/O threads. |
+| **Return Value** | Delivers `std::expected<T, std::error_code>`. Void-returning callables deliver `std::expected<void, std::error_code>`. |
+| **Pool Sizing** | Configured via `runtime_builder::set_blocking_pool_size(...)`. Defaults to 1 thread if unspecified. |
+| **Shutdown** | During `runtime::~runtime()`, the runtime shuts down the blocking pool, joining all worker threads after enqueued jobs finish. |
+
+---
+
+## 7. Limitations
+
+* **Memory Copies:** Ensure that variables captured by the callable passed to `spawn_blocking` outlive the operation or are captured by value.
+* **Pool Sizing:** If all blocking pool threads are busy executing long-running tasks, subsequent `spawn_blocking` calls will queue up. For high volumes of blocking operations, size the blocking pool appropriately using `runtime_builder`.
+
+---
+
+## 8. Related Pages
+
+* [Runtime Configuration](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/index.mdx) — Configuring pool sizes.
+* [Filesystem Operations](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/file-operations.mdx) — How Coasio uses `spawn_blocking` internally for path operations.

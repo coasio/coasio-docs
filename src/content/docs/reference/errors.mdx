@@ -1,0 +1,119 @@
+---
+title: Error Types and Propagation
+description: Error codes, expected types, and exception propagation in Coasio.
+---
+
+# Error Types and Propagation
+
+Coasio combines C++23 [`std::expected`](https://en.cppreference.com/w/cpp/utility/expected) and [`std::error_code`](https://en.cppreference.com/w/cpp/error/error_code) for operational errors with standard C++ exception propagation for unexpected task failures.
+
+---
+
+## 1. Purpose
+
+Asynchronous systems have two fundamentally distinct failure categories:
+1. **Expected Operational Failures:** Disconnected sockets, timeouts, cancellation, or missing files. These are part of normal control flow and should not incur the runtime overhead of throwing exceptions.
+2. **Exceptional Invariants & Logic Errors:** Invariant violations, assertions, or unhandled task exceptions.
+
+Coasio uses `std::expected<T, std::error_code>` for operational results and preserves exceptions for unhandled task crashes.
+
+---
+
+## 2. Prerequisites
+
+* Basic familiarity with `std::expected` and `std::unexpected`.
+* Standard system error categories (`<system_error>`).
+
+---
+
+## 3. The `coasio::error` Enumeration
+
+The [`coasio::error`](file:///C:/dev/cpp/coasio/include/coasio/error.hpp) enum defines core runtime errors:
+
+```cpp
+namespace coasio {
+enum class error {
+    cancelled = 1,      // Operation was aborted or cancelled
+    channel_closed,     // Channel sender or receiver dropped
+    semaphore_closed,   // Semaphore was closed/destroyed with active waiters
+};
+}
+```
+
+### Standard Library Integration
+
+`coasio::error` is registered with the C++ standard error code framework via `is_error_code_enum`:
+
+* **Category Name:** `"coasio"` (`coasio::coasio_category()`).
+* **Condition Mapping:** `error::cancelled` automatically matches `std::errc::operation_canceled` when tested with `==`.
+* **Asio Equivalence:** Asio cancellation codes (`asio::error::operation_aborted`) can also be mapped and converted cleanly.
+
+---
+
+## 4. Propagation Patterns with `std::expected`
+
+When an asynchronous operation fails, wrap the error code in `std::unexpected` and return it via `co_return`:
+
+```cpp
+#include <coasio.hpp>
+#include <coasio/net/tcp.hpp>
+
+coasio::task<std::expected<std::string, std::error_code>> 
+fetch_payload(std::string_view endpoint) {
+    // 1. Connect
+    auto sck_res = co_await coasio::net::tcp::socket::connect_to(endpoint);
+    if (!sck_res) {
+        // Propagate error code cleanly
+        co_return std::unexpected(sck_res.error());
+    }
+
+    auto sck = std::move(*sck_res);
+    std::string response(256, '\0');
+
+    // 2. Read
+    auto read_res = co_await sck.read_some(response);
+    if (!read_res) {
+        co_return std::unexpected(read_res.error());
+    }
+
+    response.resize(*read_res);
+    co_return response;
+}
+```
+
+---
+
+## 5. Exception Propagation Rules
+
+| Scenario | Behavior | Delivery Mechanism |
+| :--- | :--- | :--- |
+| **I/O Failure (EOF, Connection reset)** | Expected operational result. | Delivered as `std::unexpected(std::error_code)` in return value. |
+| **Cancellation** | Scope aborted. | Delivered as `std::unexpected(coasio::error::cancelled)`. |
+| **Exception inside Coroutine** | Uncaught exception in coroutine body. | Captured in `promise_type` as `std::exception_ptr`; rethrown at `co_await` or when awaiting `JoinHandle::join()`. |
+| **Exception inside `spawn_blocking`** | Function passed to `spawn_blocking` throws. | Captured in control block; rethrown when awaiting the blocking awaiter. |
+| **Calling `block_on` inside worker** | Contract violation. | Triggers an immediate `assert(worker::current() == nullptr)` failure. |
+
+---
+
+## 6. Checking and Handling Errors
+
+You can check whether an error is a cancellation error using standard comparison:
+
+```cpp
+auto res = co_await some_task();
+if (!res) {
+    if (res.error() == coasio::error::cancelled || 
+        res.error() == std::errc::operation_canceled) {
+        std::cout << "Operation was cancelled gracefully.\n";
+    } else {
+        std::cout << "Operation failed with: " << res.error().message() << "\n";
+    }
+}
+```
+
+---
+
+## 7. Related Pages
+
+* [Cancellation Semantics](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/cancellation.mdx) — Cancellation scopes and token lifecycle.
+* [Networking Reference](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/networking.mdx) — Socket return types and error codes.

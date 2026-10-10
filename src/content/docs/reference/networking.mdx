@@ -1,0 +1,120 @@
+---
+title: Networking APIs Reference
+description: Complete API reference for Coasio TCP, UDP, endpoints, and resolvers.
+---
+
+# Networking APIs Reference
+
+The [`coasio::net`](file:///C:/dev/cpp/coasio/include/coasio/net/tcp.hpp) module provides asynchronous socket abstractions built on top of standalone Asio.
+
+---
+
+## 1. Overview & Headers
+
+```cpp
+#include <coasio/net/tcp.hpp>        // TCP sockets, listeners, endpoints, resolvers
+#include <coasio/net/udp.hpp>        // UDP sockets, endpoints, resolvers
+#include <coasio/net/ip_address.hpp> // IP address representation
+```
+
+---
+
+## 2. TCP Networking
+
+### `coasio::net::tcp::listener`
+
+Represents a listening TCP acceptor socket.
+
+| Method | Return Type | Description |
+| :--- | :--- | :--- |
+| `create()` | `listener` | Creates an unbound acceptor associated with the current runtime's I/O context. |
+| `bind(endpoint ep, bool reuse_address = true)` | `std::expected<listener, std::error_code>` | Creates, opens, configures `SO_REUSEADDR`, and binds the socket. |
+| `listen(int backlog = max)` | `std::expected<void, std::error_code>` | Starts listening for incoming TCP connection requests. |
+| `accept()` | `listen_awaiter` $\rightarrow$ `std::expected<tcp::socket, std::error_code>` | Asynchronously accepts a new TCP connection. Supports cancellation. |
+| `wait(wait_type)` | `async_op<void>` | Asynchronously waits for read/write/error readiness. |
+| `close()` | `std::expected<void, std::error_code>` | Closes the acceptor socket. |
+| `asio_handle()` | `asio::ip::tcp::acceptor&` | Accesses the underlying Asio acceptor. |
+
+### `coasio::net::tcp::socket`
+
+Represents a connected or un-connected TCP stream socket.
+
+| Method | Return Type | Description |
+| :--- | :--- | :--- |
+| `create()` | `tcp::socket` | Creates a socket bound to the current runtime's I/O context. |
+| `connect_to(std::string_view host_and_port)` | `task<std::expected<socket, std::error_code>>` | Resolves a string formatted as `"host:port"` and connects asynchronously. |
+| `connect(const endpoint &ep)` | `async_op<void>` | Connects asynchronously to a resolved endpoint. |
+| `bind(const endpoint &ep)` | `std::expected<void, std::error_code>` | Binds the socket to a local endpoint. |
+| `read(buffer)` | `async_op<size_t>` | Asynchronously reads until `buffer` is completely filled or EOF/error occurs. |
+| `read_some(buffer)` | `async_op<size_t>` | Asynchronously reads at least 1 byte (up to buffer capacity). |
+| `write(buffer)` | `async_op<size_t>` | Asynchronously writes all bytes from `buffer`. |
+| `write_some(buffer)` | `async_op<size_t>` | Asynchronously writes as many bytes as can be sent immediately. |
+| `available()` | `std::expected<size_t, std::error_code>` | Returns the number of bytes available to read immediately without blocking. |
+| `shutdown(shutdown_type)` | `std::expected<void, std::error_code>` | Shuts down `shutdown_receive`, `shutdown_send`, or `shutdown_both`. |
+| `close()` | `std::expected<void, std::error_code>` | Closes the socket. |
+| `remote_endpoint()` | `std::expected<endpoint, std::error_code>` | Returns the remote peer endpoint. |
+| `local_endpoint()` | `std::expected<endpoint, std::error_code>` | Returns the local endpoint. |
+| `asio_handle()` | `asio::ip::tcp::socket&` | Accesses the underlying Asio socket object. |
+
+---
+
+## 3. UDP Networking
+
+### `coasio::net::udp::socket`
+
+Represents an asynchronous UDP datagram socket.
+
+| Method | Return Type | Description |
+| :--- | :--- | :--- |
+| `create()` | `udp::socket` | Creates a UDP socket bound to the current runtime's I/O context. |
+| `bind(const endpoint &ep)` | `std::expected<void, std::error_code>` | Binds the socket to a local UDP port/address. |
+| `connect(const endpoint &ep)` | `async_op<void>` | Establishes a default remote target endpoint. |
+| `connect_to(std::string_view host_and_port)` | `task<std::expected<socket, std::error_code>>` | Resolves and connects to a target host and port. |
+| `receive(buffer, flags = {})` | `async_op<size_t>` | Receives a datagram from a connected peer. |
+| `receive_from(buffer, endpoint &sender)` | `async_op<size_t>` | Receives a datagram and captures the sender endpoint. |
+| `send(buffer, flags = {})` | `async_op<size_t>` | Sends a datagram to a connected peer. |
+| `send_to(buffer, const endpoint &target)` | `async_op<size_t>` | Sends a datagram to a specific remote endpoint. |
+| `close()` | `std::expected<void, std::error_code>` | Closes the UDP socket. |
+| `asio_handle()` | `asio::ip::udp::socket&` | Accesses the underlying Asio socket. |
+
+---
+
+## 4. IP Addresses & Resolvers
+
+### `coasio::net::ip_address`
+
+Represents an IPv4 or IPv6 address.
+
+* `ip_address::v4_any()`: `0.0.0.0`
+* `ip_address::v4_loopback()`: `127.0.0.1`
+* `ip_address::v6_any()`: `::`
+* `ip_address::v6_loopback()`: `::1`
+* `ip_address::from_string(std::string_view)`: Parses an IP address string.
+
+### Resolvers
+
+* `coasio::net::tcp::resolver::create()` / `udp::resolver::create()`:
+  * `co_await resolver.resolve(host, service_or_port)`: Asynchronously resolves DNS names into endpoint lists.
+
+---
+
+## 5. Buffer Compatibility
+
+Coasio networking methods are templated to accept any contiguous range whose elements satisfy `coasio::detail::byte_like`:
+
+* `std::span<std::byte>` or `std::span<char>`
+* `std::vector<char>`, `std::vector<std::byte>`, `std::vector<uint8_t>`
+* `std::string` or `std::string_view` (for write operations)
+* Raw arrays (`char buf[1024]`)
+
+```cpp
+std::vector<char> buf(512);
+auto n = co_await sock.read_some(buf); // Perfectly valid
+```
+
+---
+
+## 6. Related Pages
+
+* [Guide: Perform Asynchronous TCP Operations](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/tcp-operations.mdx) — Hands-on examples.
+* [Error Types and Propagation](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/errors.mdx) — Socket error codes.

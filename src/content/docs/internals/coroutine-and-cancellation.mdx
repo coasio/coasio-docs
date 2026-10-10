@@ -1,0 +1,115 @@
+---
+title: Coroutine and Cancellation Machinery
+description: Deep dive into promise_type, symmetric transfer, root node tracking, and cancel_scope internals.
+---
+
+# Coroutine and Cancellation Machinery
+
+This document details the low-level coroutine promise types, intrusive data structures, and atomic state machines that govern task execution and cancellation in Coasio.
+
+---
+
+## 1. The `coasio::task<T>::promise_type`
+
+Every [`coasio::task<T>`](file:///C:/dev/cpp/coasio/include/coasio/task.hpp) is driven by its internal `promise_type`. 
+
+### Key Member Variables
+
+```cpp
+struct promise_type : detail::root_node {
+    std::optional<T> result_;
+    std::exception_ptr exception_;
+    std::shared_ptr<cancel_scope> owning_scope_;
+    sync::oneshot::sender<detail::root_outcome<T>> result_sender_;
+    std::coroutine_handle<> continuation_;
+    bool detached_ = false;
+    // ...
+};
+```
+
+---
+
+## 2. Symmetric Transfer & Completion Mechanics
+
+### Hierarchical Child Completion (Not Detached)
+
+When an awaited child coroutine finishes execution:
+1. `final_suspend()` returns a custom awaiter.
+2. In `await_suspend()`, if `detached_ == false`:
+   ```cpp
+   return (p.continuation_) ? p.continuation_ : std::noop_coroutine();
+   ```
+3. Returning the parent's `std::coroutine_handle<>` instructs the compiler to execute a **symmetric transfer**. The CPU directly jumps from the completing child coroutine frame to the awaiting parent frame without unwinding or re-entering the scheduler loop.
+
+### Root Task Completion (Detached)
+
+When a background root task created by `spawn` finishes:
+1. `detached_` is `true`.
+2. The promise packages its result or exception into a `detail::root_outcome<T>`.
+3. It sends this outcome across `result_sender_` (the one-shot channel watched by `JoinHandle`).
+4. It calls `runtime_unregister_root(p.owner_rt_, &p)`, decrementing `live_roots_` and notifying `roots_drained_cv_` if the count hits zero.
+5. The promise explicitly destroys its own heap frame via `h.destroy()`.
+6. `final_suspend` returns `std::noop_coroutine()`.
+
+---
+
+## 3. Intrusive Root Node Tracking
+
+To guarantee safe shutdown, the `runtime` must track every live spawned root task without unbounded dynamic allocations:
+
+* `promise_type` inherits from [`coasio::detail::root_node`](file:///C:/dev/cpp/coasio/include/coasio/detail/root_node.hpp).
+* Each node contains intrusive `next_`, `prev_`, and `scope_raw_` pointers.
+* When a task is spawned via `_spawn(task)`:
+  ```cpp
+  register_root(handle.promise().get_root_node());
+  ```
+  The root node is prepended to `roots_head_` under `roots_mutex_`, and `live_roots_` is incremented.
+* When the task completes, `runtime_unregister_root` unlinks the node in $O(1)$ time.
+
+---
+
+## 4. `cancel_scope` and `cancel_guard` State Machine
+
+Cancellation coordination uses an intrusive observer list and an atomic state machine:
+
+```text
+              +-------------+
+              |    idle     |
+              +-------------+
+                     |
+                    arm()
+                     v
+              +-------------+
+              |    armed    |
+              +-------------+
+               /           \
+     cancel() /             \ disarm()
+             v               v
+      +-------------+   +-------------+
+      |    fired    |   |  disarmed   |
+      +-------------+   +-------------+
+```
+
+### `cancel_guard::state` States
+
+* **`idle`:** Guard initialized, not registered with any pending operation.
+* **`armed`:** Guard linked into the `cancel_scope`'s intrusive linked list (`head_`). The cancellation callback is active.
+* **`fired`:** `scope->cancel()` occurred while the guard was armed. The callback has executed.
+* **`disarmed`:** The asynchronous operation finished normally. The guard unlinked itself from the scope.
+
+### Concurrency & Lock Invariants
+
+* **Mutex Order:** To prevent deadlocks, the lock hierarchy is strictly:
+
+```text
+Scope Mutex (scope_->mtx_) -> Primitive Mutex (e.g. semaphore, channel)
+```
+
+* **No Callbacks Under Primitive Locks:** Armed callbacks are invoked while holding `scope_->mtx_`. They must never attempt to call `arm()`, `disarm()`, or allocate memory.
+
+---
+
+## 5. Related Pages
+
+* [Cancellation Reference](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/cancellation.mdx) — Public cancellation API.
+* [Lifetimes and Safe Shutdown](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/lifetimes.mdx) — How root drainage protects against use-after-free.

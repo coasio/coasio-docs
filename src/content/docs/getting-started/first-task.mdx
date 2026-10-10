@@ -1,0 +1,152 @@
+---
+title: Your First Task
+description: Write, compile, and execute a minimal asynchronous coroutine with Coasio.
+---
+
+# Your First Task
+
+This guide walks you through writing, compiling, and running your first asynchronous program using Coasio.
+
+---
+
+## 1. Purpose
+
+In standard C++, starting an asynchronous coroutine requires an executor or runtime to drive its resumption and handle its lifecycle. Coasio provides the [`coasio::runtime`](file:///C:/dev/cpp/coasio/include/coasio/runtime.hpp) and [`coasio::task<T>`](file:///C:/dev/cpp/coasio/include/coasio/task.hpp) abstractions to make writing and driving coroutines straightforward.
+
+---
+
+## 2. Prerequisites
+
+* C++23 compiler (MSVC 2022 19.33+ or GCC 12+).
+* CMake 3.20+.
+* Basic understanding of C++ coroutines (`co_await` and `co_return`).
+
+---
+
+## 3. Example
+
+Create a file named `main.cpp`:
+
+```cpp
+#include <chrono>
+#include <iostream>
+#include <coasio.hpp>
+#include <coasio/time.hpp>
+
+using namespace std::chrono_literals;
+
+// An asynchronous coroutine returning a value
+coasio::task<int> compute_answer() {
+    std::cout << "[Worker] Computing answer in background...\n";
+    // Cooperatively suspend the coroutine for 100 milliseconds
+    auto sleep_result = co_await coasio::time::sleep(100ms);
+    if (!sleep_result) {
+        std::cerr << "Sleep interrupted: " << sleep_result.error().message() << "\n";
+        co_return -1;
+    }
+    co_return 42;
+}
+
+// Entry point coroutine
+coasio::task<void> async_main() {
+    std::cout << "[Main] Starting async work\n";
+    
+    // Await the completion of compute_answer()
+    int answer = co_await compute_answer();
+    
+    std::cout << "[Main] The answer is: " << answer << "\n";
+    co_return;
+}
+
+int main() {
+    // 1. Initialize the Coasio runtime
+    coasio::runtime rt;
+
+    // 2. Block the synchronous main thread until async_main finishes
+    rt.block_on(async_main());
+
+    return 0;
+}
+```
+
+---
+
+## 4. Explanation
+
+1. **`coasio::task<int>`:** Returning `coasio::task<T>` declares the function as a C++23 coroutine. It is lazily evaluated—it will not start execution until awaited or spawned.
+2. **`coasio::time::sleep(100ms)`:** Initiates an asynchronous timer via Asio's I/O event loop. The coroutine suspends without blocking the worker thread. When the timer expires, the worker scheduler resumes the coroutine.
+3. **`std::expected` return value:** Asynchronous leaf operations in Coasio (like `sleep`) return `std::expected<void, std::error_code>` instead of throwing exceptions for operational cancellation.
+4. **`coasio::runtime rt;`:** Creates worker execution threads and an I/O context thread.
+5. **`rt.block_on(...)`:** Drives the root coroutine to completion, blocking the calling thread (e.g. `main()`) and returning the final result.
+
+---
+
+## 5. Build and Run Instructions
+
+### `CMakeLists.txt`
+
+```cmake
+cmake_minimum_required(VERSION 3.20)
+project(first_coasio_task LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+include(FetchContent)
+FetchContent_Declare(
+    coasio
+    GIT_REPOSITORY https://github.com/coasio/coasio.git
+    GIT_TAG        main
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(coasio)
+
+add_executable(first_task main.cpp)
+target_link_libraries(first_task PRIVATE coasio::coasio)
+```
+
+### Build Commands
+
+```bash
+# Configure the project
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+
+# Build the executable
+cmake --build build --config Release
+
+# Run the program
+./build/first_task
+```
+
+### Output
+
+```text
+[Main] Starting async work
+[Worker] Computing answer in background...
+[Main] The answer is: 42
+```
+
+---
+
+## 6. Execution Semantics
+
+| Behavior | Guarantee |
+| :--- | :--- |
+| **`co_await task`** | Suspends the caller and transfers execution immediately to the callee via symmetric transfer. |
+| **`block_on` call site** | Must **never** be invoked from inside a worker thread or running coroutine; doing so triggers an assertion failure. Use `co_await` inside coroutines instead. |
+| **Worker Threads** | Coroutines are executed and resumed on background worker threads, not the caller thread of `block_on`. |
+| **Shutdown** | When `rt` is destroyed, any remaining live root tasks are cooperatively cancelled and drained before the runtime destructor completes. |
+
+---
+
+## 7. Limitations
+
+* **No implicit global runtime:** Coroutines requiring scheduler services (like `spawn` or `time::sleep`) must run within an active `runtime` instance.
+* **Never invoke `block_on` in coroutines:** `block_on` synchronously blocks an OS thread; calling it from a worker thread exhausts thread pool capacity and can cause deadlocks.
+
+---
+
+## 8. Related Pages
+
+* [Core Concepts: Tasks](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/tasks.mdx) — Deep dive into `task<T>` design.
+* [Core Concepts: Awaiting and Spawning](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/awaiting-and-spawning.mdx) — Learn how to spawn independent background tasks.

@@ -1,0 +1,53 @@
+---
+title: Runtime Internals Overview
+description: Architectural overview, subsystem organization, and internal design of Coasio.
+---
+
+# Runtime Internals Overview
+
+This section documents the internal implementation, concurrency algorithms, and design choices of Coasio.
+
+:::note
+The pages in this section describe **internal implementation choices** that help contributors and maintainers understand how the library works. These are separate from the user-facing contracts and guarantees promised in the [Core Concepts](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/tasks.mdx) and [Reference](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/index.mdx) sections.
+:::
+
+---
+
+## Subsystem Architecture
+
+```text
+                               +-----------------------------+
+                               |     Application Coroutine   |
+                               +-----------------------------+
+                                              |
+                          co_await / spawn / spawn_blocking
+                                              |
+        +-------------------------------------+-------------------------------------+
+        |                                     |                                     |
+        v                                     v                                     v
++-----------------------+           +-----------------------+           +-----------------------+
+|   Coroutine Runtime   |           |    Asio Event Loop    |           |     Blocking Pool     |
+|   & Work Stealer      |           | (io_context + Driver) |           |   (Dedicated Pool)    |
++-----------------------+           +-----------------------+           +-----------------------+
+| * Per-worker queues   |           | * IOCP / epoll driver |           | * std::condition_var  |
+| * 256-slot ring buf   |           | * Sockets, Timers     |           | * Task queue & worker |
+| * Global FIFO fallback|           | * Cancellation slots  |           |   thread join         |
+| * Half-queue stealing |           | * Single/Multi thread |           | * Enqueue cancellation|
++-----------------------+           +-----------------------+           +-----------------------+
+```
+
+---
+
+## Internals Topics
+
+* **[Architecture and Role of Asio](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/architecture-and-asio.mdx)**
+  Examines how Asio's `io_context` is isolated from coroutine execution and how the `async_op` bridge translates Asio completion handlers into coroutine resumptions.
+
+* **[Scheduler Design & Work Stealing](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/scheduler-and-work-stealing.mdx)**
+  Covers the worker thread loop, ring buffer queues, the 60-pop global polling interval, victim selection, and parking mechanics.
+
+* **[Coroutine & Cancellation Machinery](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/coroutine-and-cancellation.mdx)**
+  Analyzes `task<T>::promise_type`, symmetric transfer in `final_suspend`, intrusive root node tracking, and `cancel_scope` atomic callback dispatch.
+
+* **[Testing & Benchmarking Methodology](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/testing-and-benchmarks.mdx)**
+  Details the Catch2 test suite organization, stress testing, race condition detection, and smoke test methodologies.

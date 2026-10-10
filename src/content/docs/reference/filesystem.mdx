@@ -1,0 +1,121 @@
+---
+title: Filesystem APIs Reference
+description: Complete API reference for Coasio file streams, random access files, and path operations.
+---
+
+# Filesystem APIs Reference
+
+The [`coasio::filesystem`](file:///C:/dev/cpp/coasio/include/coasio/filesystem.hpp) namespace provides asynchronous file I/O streams and asynchronous mirrors of standard `std::filesystem` operations.
+
+---
+
+## 1. Overview & Headers
+
+```cpp
+#include <coasio/filesystem.hpp>           // Filesystem functions & path types
+#include <coasio/filesystem/file.hpp>      // file and random_access_file classes
+```
+
+---
+
+## 2. File Configuration: `open_options`
+
+```cpp
+struct open_options {
+    open_mode mode = open_mode::read; // read, write, read_write
+    bool create = false;              // Create file if it does not exist
+    bool exclusive = false;           // Fail if file already exists
+    bool truncate = false;            // Truncate existing file to 0 bytes
+    bool append = false;              // Seek to end of file before each write
+    bool sync_all_on_write = false;   // Automatically sync data and metadata on write
+};
+```
+
+---
+
+## 3. `coasio::filesystem::file` (Stream File)
+
+Represents an open asynchronous sequential file stream (wrapping `asio::stream_file`).
+
+| Method | Return Type | Description |
+| :--- | :--- | :--- |
+| `open(path, options)` | `task<std::expected<file, std::error_code>>` | Opens the file asynchronously using the blocking pool. |
+| `read(buffer)` | `async_op<size_t>` | Asynchronously reads until buffer is completely filled or EOF. |
+| `read_some(buffer)` | `async_op<size_t>` | Asynchronously reads available bytes (at least 1). |
+| `write(buffer)` | `async_op<size_t>` | Asynchronously writes all bytes from buffer. |
+| `write_some(buffer)` | `async_op<size_t>` | Asynchronously writes bytes up to buffer capacity. |
+| `seek(offset, origin)` | `task<std::expected<uint64_t, std::error_code>>` | Sets the file pointer (`begin`, `current`, `end`). |
+| `position()` | `task<std::expected<uint64_t, std::error_code>>` | Returns the current byte offset in the file. |
+| `size()` | `task<std::expected<uint64_t, std::error_code>>` | Queries the file size in bytes. |
+| `resize(uint64_t size)` | `task<std::expected<void, std::error_code>>` | Truncates or extends the file size. |
+| `sync_data()` | `task<std::expected<void, std::error_code>>` | Flushes unwritten file data to storage. |
+| `sync_all()` | `task<std::expected<void, std::error_code>>` | Flushes file data and metadata (timestamps, size) to storage. |
+| `close()` | `std::expected<void, std::error_code>` | Closes the file handle. |
+| `is_open()` | `bool` | Returns `true` if the file descriptor is currently open. |
+| `asio_handle()` | `asio::stream_file&` | Accesses the underlying Asio stream file object. |
+
+---
+
+## 4. `coasio::filesystem::random_access_file`
+
+Represents an open file supporting positional reads and writes without a global file pointer (wrapping `asio::random_access_file`).
+
+| Method | Return Type | Description |
+| :--- | :--- | :--- |
+| `open(path, options)` | `task<std::expected<random_access_file, std::error_code>>` | Opens the random access file asynchronously. |
+| `read_at(offset, buffer)` | `async_op<size_t>` | Reads starting from `offset` until buffer is filled. |
+| `read_some_at(offset, buffer)` | `async_op<size_t>` | Reads starting from `offset` up to buffer capacity. |
+| `write_at(offset, buffer)` | `async_op<size_t>` | Writes starting at `offset` until buffer is transmitted. |
+| `write_some_at(offset, buffer)` | `async_op<size_t>` | Writes starting at `offset`. |
+| `size()` | `task<std::expected<uint64_t, std::error_code>>` | Queries file size. |
+| `resize(uint64_t size)` | `task<std::expected<void, std::error_code>>` | Truncates or extends the file. |
+| `sync_data()` / `sync_all()` | `task<std::expected<void, std::error_code>>` | Flushes data and metadata. |
+| `close()` | `std::expected<void, std::error_code>` | Closes the handle. |
+| `asio_handle()` | `asio::random_access_file&` | Accesses the underlying Asio handle. |
+
+---
+
+## 5. Asynchronous Filesystem Functions
+
+The following free functions mirror `std::filesystem` operations, executing on the background blocking pool and returning `task<std::expected<T, std::error_code>>`:
+
+* `exists(path)` $\rightarrow$ `bool`
+* `file_size(path)` $\rightarrow$ `uintmax_t`
+* `is_regular_file(path)` $\rightarrow$ `bool`
+* `is_directory(path)` $\rightarrow$ `bool`
+* `is_symlink(path)` $\rightarrow$ `bool`
+* `status(path)` $\rightarrow$ `std::filesystem::file_status`
+* `symlink_status(path)` $\rightarrow$ `std::filesystem::file_status`
+* `hard_link_count(path)` $\rightarrow$ `uintmax_t`
+* `equivalent(path1, path2)` $\rightarrow$ `bool`
+* `last_write_time(path)` $\rightarrow$ `std::filesystem::file_time_type`
+* `last_write_time(path, time)` $\rightarrow$ `void`
+* `create_directory(path)` $\rightarrow$ `bool`
+* `create_directories(path)` $\rightarrow$ `bool`
+* `remove(path)` $\rightarrow$ `bool`
+* `remove_all(path)` $\rightarrow$ `uintmax_t`
+* `rename(from, to)` $\rightarrow$ `void`
+* `copy(from, to, options)` $\rightarrow$ `void`
+* `copy_file(from, to, options)` $\rightarrow$ `bool`
+* `copy_symlink(from, to)` $\rightarrow$ `void`
+* `create_hard_link(target, link)` $\rightarrow$ `void`
+* `create_symlink(target, link)` $\rightarrow$ `void`
+* `create_directory_symlink(target, link)` $\rightarrow$ `void`
+* `read_symlink(path)` $\rightarrow$ `std::filesystem::path`
+* `absolute(path)` $\rightarrow$ `std::filesystem::path`
+* `canonical(path)` $\rightarrow$ `std::filesystem::path`
+* `weakly_canonical(path)` $\rightarrow$ `std::filesystem::path`
+* `relative(path, base)` $\rightarrow$ `std::filesystem::path`
+* `proximate(path, base)` $\rightarrow$ `std::filesystem::path`
+* `current_path()` $\rightarrow$ `std::filesystem::path`
+* `current_path(path)` $\rightarrow$ `void`
+* `temp_directory_path()` $\rightarrow$ `std::filesystem::path`
+* `space(path)` $\rightarrow$ `std::filesystem::space_info`
+* `permissions(path, perms, options)` $\rightarrow$ `void`
+
+---
+
+## 6. Related Pages
+
+* [Guide: Work with Files Asynchronously](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/file-operations.mdx)
+* [Executing Blocking Work Safely](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/blocking-work.mdx)

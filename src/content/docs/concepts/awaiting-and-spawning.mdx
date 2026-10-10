@@ -1,0 +1,145 @@
+---
+title: Awaiting and Spawning
+description: Task composition with co_await, blocking execution with block_on, and concurrent tasks with spawn.
+---
+
+# Awaiting and Spawning
+
+Coasio provides two distinct ways to execute asynchronous coroutines: **sequential composition** via `co_await`, and **concurrent task creation** via `spawn`.
+
+---
+
+## 1. Purpose
+
+When structuring an asynchronous application, you frequently need to decide between:
+1. **Hierarchical evaluation:** Waiting for a sub-operation to finish before continuing (using `co_await`).
+2. **Background concurrency:** Kicking off an independent operation that proceeds in parallel while the caller continues its own work (using `spawn`).
+3. **Synchronous bridging:** Blocking an external thread (like `main()`) until an asynchronous task tree completes (using `block_on`).
+
+Understanding the distinction between awaiting, spawning, and blocking is fundamental to writing correct Coasio code.
+
+---
+
+## 2. Prerequisites
+
+* [`coasio::task<T>`](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/tasks.mdx) basics.
+* Familiarity with `std::expected` and `std::error_code`.
+
+---
+
+## 3. Example
+
+```cpp
+#include <chrono>
+#include <iostream>
+#include <coasio.hpp>
+#include <coasio/time.hpp>
+
+using namespace std::chrono_literals;
+
+coasio::task<int> fetch_remote_id() {
+    co_await coasio::time::sleep(20ms);
+    co_return 101;
+}
+
+coasio::task<void> log_heartbeat() {
+    for (int i = 0; i < 3; ++i) {
+        co_await coasio::time::sleep(15ms);
+        std::cout << "[Heartbeat] tick " << i << "\n";
+    }
+}
+
+coasio::task<void> workflow() {
+    // 1. Spawning an independent background task
+    // Returns a JoinHandle<void>
+    auto heartbeat_handle = coasio::spawn(log_heartbeat());
+
+    // 2. Sequential composition: await remote ID
+    int id = co_await fetch_remote_id();
+    std::cout << "Fetched ID: " << id << "\n";
+
+    // 3. Joining the background task
+    // join() returns task<std::expected<void, std::error_code>>
+    auto join_result = co_await heartbeat_handle.join();
+    if (!join_result) {
+        std::cerr << "Heartbeat failed or cancelled: " 
+                  << join_result.error().message() << "\n";
+    }
+
+    co_return;
+}
+
+int main() {
+    coasio::runtime rt;
+    // 4. Synchronous entry point: block_on
+    rt.block_on(workflow());
+    return 0;
+}
+```
+
+---
+
+## 4. Explanation
+
+### `co_await`: Hierarchical Composition
+
+When you write `T val = co_await my_task();`:
+* The current coroutine suspends immediately.
+* `my_task()` executes as a child task within the same cancellation scope.
+* Control returns to the awaiting coroutine only after `my_task()` completes or fails.
+* If `my_task()` throws an exception, it is rethrown at the `co_await` expression.
+
+### `spawn`: Independent Concurrency
+
+When you invoke `coasio::spawn(task)` (or `rt.spawn(task)`):
+* The task is **detached** from the current coroutine's immediate call chain.
+* The task is registered as a new **root task** in the runtime and assigned its own independent [`cancel_scope`](file:///C:/dev/cpp/coasio/include/coasio/cancel_scope.hpp).
+* It is scheduled on the worker thread pool and begins executing concurrently.
+* It returns a [`coasio::JoinHandle<T>`](file:///C:/dev/cpp/coasio/include/coasio/runtime.hpp#L445).
+
+### `JoinHandle<T>`: Observing & Aborting Tasks
+
+`JoinHandle<T>` is the handle returned by `spawn`. It provides:
+
+* **`co_await handle.join()`:** Asynchronously awaits the completion of the spawned task. Returns `std::expected<T, std::error_code>`.
+  * If the task returned a value of type `T`, the result contains the value.
+  * If the task threw an exception, `join()` **rethinks and rethrows** that exception on the joining coroutine.
+  * If the task was cancelled, it yields `std::unexpected(coasio::error::cancelled)`.
+* **`handle.abort()`:** Signals cancellation to the spawned task's `cancel_scope`.
+* **`handle.cancelled()`:** Returns `true` if cancellation was requested.
+
+### `block_on`: The Synchronous-to-Asynchronous Bridge
+
+`rt.block_on(task)`:
+* Takes a `task<T>` or a zero-argument callable returning `task<T>`.
+* Spawns the task on the runtime and blocks the current OS thread using a standard `std::future`.
+* When the task completes, `block_on` unblocks and returns the value `T` (or rethrows any unhandled exception).
+* **Important:** `block_on` must only be called from non-worker threads (such as `main()`).
+
+---
+
+## 5. Behavioral Contracts
+
+| Behavior | Guarantee | Details |
+| :--- | :--- | :--- |
+| **`co_await`** | Suspends caller, transfers control symmetrically. | Errors delivered via exceptions or return values; inherits cancellation scope. |
+| **`spawn`** | Creates an independent root task. | Returns immediately without suspending caller. Runs concurrently on worker pool. |
+| **`JoinHandle::join()`** | Suspends joining coroutine until target root completes. | Returns `std::expected<T, std::error_code>`. Exceptions re-thrown. |
+| **`JoinHandle::abort()`** | Triggers cancellation on target root's scope. | Leaves child tasks of the joiner unharmed if they were spawned independently. |
+| **`block_on` call constraint** | Valid only from non-worker threads. | Asserts `worker::current() == nullptr`. |
+| **Runtime context** | `coasio::spawn(...)` free function uses thread-local runtime. | Throws/terminates if called outside an active Coasio runtime worker thread. Use `rt.spawn(...)` if calling from outside. |
+
+---
+
+## 6. Limitations
+
+* **Do not discard `JoinHandle` without consideration:** If a spawned task is detached and never joined, errors and exceptions are silently dropped in the detached outcome sender unless logged internally.
+* **No thread affinity on join:** The coroutine that awaits `handle.join()` may resume on a different worker thread than the one on which it initiated the join.
+
+---
+
+## 7. Related Pages
+
+* [Scheduling and Workers](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/scheduling.mdx) — How spawned tasks are dispatched across worker threads.
+* [Lifetimes and Captures](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/lifetimes.mdx) — Safe capture patterns when passing lambdas to `spawn`.
+* [Cancellation](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/cancellation.mdx) — Cancellation scopes and token propagation.

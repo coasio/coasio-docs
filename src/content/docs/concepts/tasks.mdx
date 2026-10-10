@@ -1,0 +1,143 @@
+---
+title: Tasks
+description: Understand coasio::task<T> and task<void>, lazy evaluation, and coroutine mechanics.
+---
+
+# Tasks
+
+[`coasio::task<T>`](file:///C:/dev/cpp/coasio/include/coasio/task.hpp) is the core coroutine primitive in Coasio. It represents an asynchronous computation that yields a value of type `T` (or `void`) upon completion.
+
+---
+
+## 1. Purpose
+
+In C++23, writing an asynchronous function requires a return type whose `promise_type` specifies how the coroutine suspends, yields results, handles exceptions, and transfers control. `coasio::task<T>` provides a zero-overhead, move-only abstraction with:
+
+* **Lazy evaluation:** The coroutine does not begin execution until it is explicitly awaited or spawned.
+* **Symmetric transfer:** Resumption between awaiting coroutines avoids stack overflow and avoids unnecessary thread context switches.
+* **Structured lifetime management:** The task object strictly manages the lifetime of its underlying heap-allocated coroutine frame.
+* **Automatic cancellation propagation:** Cancellation scopes are passed down through `await_transform` into child tasks and I/O awaitables.
+
+---
+
+## 2. Prerequisites
+
+* C++23 coroutine keywords: `co_await`, `co_return`.
+* Understanding of move semantics and value categories (lvalues vs rvalues).
+
+---
+
+## 3. Example
+
+```cpp
+#include <coasio.hpp>
+#include <iostream>
+#include <string>
+
+// A coroutine producing a value
+coasio::task<std::string> fetch_data() {
+    co_return "Important payload";
+}
+
+// A coroutine returning void
+coasio::task<void> process() {
+    // 1. Move-await the task
+    std::string data = co_await fetch_data();
+    std::cout << "Received: " << data << "\n";
+
+    // 2. Exception propagation
+    try {
+        co_await []() -> coasio::task<int> {
+            throw std::runtime_error("Simulated failure");
+            co_return 100;
+        }();
+    } catch (const std::exception &e) {
+        std::cout << "Caught error: " << e.what() << "\n";
+    }
+
+    co_return;
+}
+```
+
+---
+
+## 4. Explanation & Semantics
+
+### Lazy Evaluation (`initial_suspend`)
+
+When a function returning `coasio::task<T>` is invoked:
+1. The compiler allocates the coroutine frame on the heap.
+2. The parameters are copied or moved into the coroutine frame.
+3. The coroutine immediately suspends at its initial suspend point (`initial_suspend() -> std::suspend_always`).
+4. Control returns to the caller with a `coasio::task<T>` handle.
+
+No user code inside the coroutine body executes until the task is either:
+* `co_await`ed by another running task, or
+* Submitted to the runtime via [`rt.spawn(...)`](file:///C:/dev/cpp/coasio/include/coasio/runtime.hpp#L309).
+
+### Move-Only and Rvalue `co_await`
+
+A `task<T>` cannot be copied. Furthermore, `operator co_await() &` is explicitly deleted:
+
+```cpp
+auto t = fetch_data();
+// co_await t;            // COMPILE ERROR: operator co_await() & is deleted
+co_await std::move(t);    // OK: operator co_await() && noexcept
+```
+
+**Why is lvalue `co_await` deleted?**
+A coroutine can only be driven to completion once. If multiple awaits on the same lvalue were permitted, it could cause double resumption or use-after-free bugs. Requiring an rvalue (`std::move(t)`) enforces strict ownership transfer.
+
+### Symmetric Transfer (`final_suspend`)
+
+When a child task reaches `co_return` or an unhandled exception:
+1. Its `final_suspend()` is invoked.
+2. If the task was awaited by a parent task, `await_suspend` returns the parent's `std::coroutine_handle<>`.
+3. The C++ runtime performs a symmetric transfer to resume the parent immediately on the same thread without unbounded recursion.
+
+### Exception Delivery
+
+If a coroutine throws an unhandled exception:
+* The exception is captured inside `promise_type::unhandled_exception()` as a `std::exception_ptr`.
+* The coroutine suspends at `final_suspend`.
+* When the parent coroutine resumes, `await_resume()` rethrows the captured exception using `std::rethrow_exception`.
+* The caller can catch the exception using a standard C++ `try / catch` block.
+
+### Cancellation Propagation (`await_transform`)
+
+Whenever a task awaits a child task or an I/O awaitable (such as a timer or socket operation), `promise_type::await_transform` transparently propagates the parent task's `owning_scope_`:
+
+```cpp
+template <typename U> auto await_transform(task<U> &&child) {
+    auto &cp = child.handle().promise();
+    cp.owning_scope_ = owning_scope_;
+    return std::move(child);
+}
+```
+
+This guarantees that if the root task is aborted, all descending awaitables in the call hierarchy receive the cancellation signal.
+
+---
+
+## 5. Contract: Guarantees vs Non-Guarantees
+
+| Feature | What Coasio Guarantees | What Coasio Does NOT Guarantee |
+| :--- | :--- | :--- |
+| **Execution** | Will never start before `co_await` or `spawn`. | No guarantee that awaiting immediately starts on a specific CPU core. |
+| **Resumption Thread** | Resumption happens on an active Coasio worker thread. | Resumption is not guaranteed to occur on the same worker thread as before suspension. |
+| **Destruction** | Destroying an un-awaited `task<T>` safely destroys the coroutine frame. | Does not cancel un-detached asynchronous external background callbacks unless attached to a scope. |
+| **Copyability** | Move-only. Strict single-owner semantics. | Cannot be copied, shared across multiple owners, or awaited multiple times. |
+
+---
+
+## 6. Limitations
+
+* **No multithreaded concurrent `co_await`:** A single `task<T>` instance must only be awaited once by a single coroutine.
+* **Do not ignore un-awaited tasks with captured resources:** If a task holds pointers or reference captures and is destroyed without ever being awaited, the captures are destroyed without executing the coroutine body.
+
+---
+
+## 7. Related Pages
+
+* [Awaiting and Spawning](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/awaiting-and-spawning.mdx) — Composing tasks vs spawning independent background tasks.
+* [Lifetimes and Captures](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/lifetimes.mdx) — Critical rules for lambda captures in C++23 coroutines.

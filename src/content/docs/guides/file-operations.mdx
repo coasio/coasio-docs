@@ -1,0 +1,163 @@
+---
+title: Work with Files Asynchronously
+description: Non-blocking file I/O, random access files, and filesystem operations in Coasio.
+---
+
+# Work with Files Asynchronously
+
+Coasio provides asynchronous file streams and filesystem manipulation in the [`coasio::filesystem`](file:///C:/dev/cpp/coasio/include/coasio/filesystem.hpp) namespace.
+
+---
+
+## 1. Purpose
+
+Synchronous file system calls (such as reading a file or creating directories) block the calling thread at the OS kernel level. In an asynchronous event loop, blocking on disk I/O degrades overall system throughput.
+
+Coasio solves this in two ways:
+1. **Asynchronous File Streams (`coasio::filesystem::file`):** Wraps OS asynchronous file handles (using Asio stream files and completion ports/io_uring where available).
+2. **Offloaded Path Utilities:** Standard `std::filesystem` operations (like checking existence, querying size, or creating folders) are automatically offloaded to Coasio's background blocking pool using `spawn_blocking`.
+
+---
+
+## 2. Prerequisites
+
+* Standard C++ filesystem concepts (`std::filesystem::path`).
+* [`coasio::task<T>`](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/tasks.mdx) and `std::expected`.
+
+---
+
+## 3. Example: Reading and Writing Files
+
+```cpp
+#include <iostream>
+#include <string>
+#include <vector>
+#include <coasio.hpp>
+#include <coasio/filesystem.hpp>
+#include <coasio/filesystem/file.hpp>
+
+using namespace coasio::filesystem;
+
+coasio::task<void> file_demo() {
+    path file_path = "example_data.txt";
+
+    // 1. Check existence asynchronously
+    auto exists_res = co_await exists(file_path);
+    if (exists_res && *exists_res) {
+        std::cout << "File exists, removing old copy...\n";
+        co_await remove(file_path);
+    }
+
+    // 2. Open a file for writing (create if missing)
+    open_options opts;
+    opts.mode = open_mode::read_write;
+    opts.create = true;
+    opts.truncate = true;
+
+    auto open_res = co_await file::open(file_path, opts);
+    if (!open_res) {
+        std::cerr << "Failed to open file: " << open_res.error().message() << "\n";
+        co_return;
+    }
+
+    file f = std::move(*open_res);
+
+    // 3. Write data asynchronously
+    std::string content = "Coasio C++23 Asynchronous File System!\n";
+    auto write_res = co_await f.write(content);
+    if (!write_res) {
+        std::cerr << "Write error: " << write_res.error().message() << "\n";
+        co_return;
+    }
+    std::cout << "Wrote " << *write_res << " bytes.\n";
+
+    // 4. Seek back to the beginning
+    co_await f.seek(0, seek_origin::begin);
+
+    // 5. Read data back
+    std::string read_buffer(content.size(), '\0');
+    auto read_res = co_await f.read(read_buffer);
+    if (read_res) {
+        std::cout << "Read back: " << read_buffer;
+    }
+
+    // 6. Flush changes to disk
+    co_await f.sync_all();
+    f.close();
+
+    co_return;
+}
+
+int main() {
+    coasio::runtime rt;
+    rt.block_on(file_demo());
+    return 0;
+}
+```
+
+---
+
+## 4. Random Access Files
+
+For scenarios where multiple coroutines need to read or write at arbitrary file offsets without maintaining an internal file seek pointer (such as database engines or cache files), use [`random_access_file`](file:///C:/dev/cpp/coasio/include/coasio/filesystem/file.hpp#L237):
+
+```cpp
+open_options opts;
+opts.mode = open_mode::read_write;
+opts.create = true;
+
+auto maybe_raf = co_await random_access_file::open("database.dat", opts);
+if (maybe_raf) {
+    auto raf = std::move(*maybe_raf);
+
+    std::string header = "HEADER_V1";
+    // Write at offset 0
+    co_await raf.write_at(0, header);
+
+    std::string record = "RECORD_42";
+    // Write at offset 1024 without seeking
+    co_await raf.write_at(1024, record);
+}
+```
+
+---
+
+## 5. Asynchronous Filesystem Utilities
+
+The [`coasio::filesystem`](file:///C:/dev/cpp/coasio/include/coasio/filesystem.hpp) namespace mirrors common `std::filesystem` functions as coroutines that return `task<std::expected<T, std::error_code>>`:
+
+| Function | Operation |
+| :--- | :--- |
+| `exists(path)` | Checks if a file or directory exists. |
+| `file_size(path)` | Returns the size in bytes of a regular file. |
+| `create_directory(path)` | Creates a single directory. |
+| `create_directories(path)` | Creates directories recursively. |
+| `remove(path)` | Deletes a file or empty directory. |
+| `remove_all(path)` | Deletes a directory tree recursively. |
+| `rename(from, to)` | Moves or renames a file or directory. |
+| `copy(from, to)` | Copies files or directories. |
+| `last_write_time(path)` | Gets or sets the file modification timestamp. |
+
+Because these functions invoke `spawn_blocking`, they will not block the coroutine worker threads or the Asio event loop.
+
+---
+
+## 6. Semantics & Guarantees
+
+* **Encoding:** Paths accept `std::filesystem::path`. On Windows, wide paths are normalized.
+* **Return Values:** Operations return `std::expected<T, std::error_code>`, mapping filesystem errors to `std::error_code`.
+* **Syncing:** `f.sync_data()` flushes file contents; `f.sync_all()` flushes file contents and metadata.
+
+---
+
+## 7. Limitations
+
+* **Memory buffer lifetimes:** As with sockets, buffers provided to `read` or `write` must remain valid until the `co_await` expression completes.
+* **Lexical path utilities:** Path operations that are purely lexical (`p.lexically_normal()`, `p.parent_path()`) remain synchronous member functions of `std::filesystem::path`.
+
+---
+
+## 8. Related Pages
+
+* [Filesystem Reference](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/filesystem.mdx) — Full options and API reference.
+* [Executing Blocking Work Safely](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/blocking-work.mdx) — How `spawn_blocking` works under the hood.

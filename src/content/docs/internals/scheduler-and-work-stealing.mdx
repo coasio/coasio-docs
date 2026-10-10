@@ -1,0 +1,142 @@
+---
+title: Scheduler Design and Work Stealing
+description: In-depth analysis of Coasio's multi-threaded work-stealing scheduler implementation.
+---
+
+# Scheduler Design and Work Stealing
+
+This document details the internal design and algorithms powering Coasio's multi-threaded coroutine scheduler ([`coasio::worker`](file:///C:/dev/cpp/coasio/include/coasio/runtime.hpp#L28) and [`coasio::runtime`](file:///C:/dev/cpp/coasio/include/coasio/runtime.hpp#L168)).
+
+---
+
+## 1. Overview of Scheduler Components
+
+The scheduler coordinates three layers of task storage:
+
+```text
++-----------------------------------------------------------+
+|               Global Task Queue (FIFO)                    |
+|          (Protected by global_tasks_queue_mutex_)         |
++-----------------------------------------------------------+
+       ^                            ^                 ^
+       |                            |                 |
+  Global Poll                  Global Poll       Global Poll
+   (every 60)                   (every 60)        (every 60)
+       |                            |                 |
+       v                            v                 v
++--------------+             +--------------+  ...  +--------------+
+|   Worker 0   |             |   Worker 1   |       |   Worker N   |
+| Local Queue  | <---Steal---| Local Queue  |       | Local Queue  |
+| (Cap: 256)   |             | (Cap: 256)   |       | (Cap: 256)   |
++--------------+             +--------------+       +--------------+
+```
+
+1. **Per-Worker Local Ring Buffers:** Fixed-size circular arrays (`capacity = 256`) storing ready-to-run coroutine handles (`std::coroutine_handle<>`).
+2. **Global Fallback Queue:** An unbounded `std::queue<std::coroutine_handle<>>` shared among all workers.
+3. **Peer Work Stealing:** When a worker's local queue is empty, it attempts to steal tasks from peer workers.
+
+---
+
+## 2. Worker Run Loop
+
+Every coroutine worker thread runs [`coasio::worker::run()`](file:///C:/dev/cpp/coasio/src/runtime.cpp#L3):
+
+```cpp
+void worker::run() {
+    size_t pops_since_global_poll = 0;
+    while (!rt_->stop_requested_.load(std::memory_order_acquire)) {
+        std::coroutine_handle<> task{};
+
+        // 1. Anti-starvation check: poll global queue every 60 pops
+        if (pops_since_global_poll == global_poll_interval_) {
+            pops_since_global_poll = 0;
+            task = rt_->try_get_next_task_from_queue();
+        }
+
+        // 2. Try pop from local queue
+        if (!task) task = try_pop_local_task();
+
+        // 3. Fallback to global queue if local was empty
+        if (!task) task = rt_->try_get_next_task_from_queue();
+
+        // 4. Steal from peer workers
+        if (!task) task = try_steal_from_peers();
+
+        // 5. If still no task found, park the thread
+        if (!task) {
+            park();
+            continue;
+        }
+
+        // 6. Resume coroutine
+        task.resume();
+        pops_since_global_poll++;
+    }
+}
+```
+
+---
+
+## 3. Work-Stealing Algorithm
+
+When a worker's local and global queues are empty, it executes `try_steal_from_peers()`:
+
+### 1. Round-Robin Victim Selection
+
+To prevent lock contention on a single busy worker, the thief rotates victim selection using `next_victim_index_ = (next_victim_index_ + 1) % total_workers`.
+
+### 2. Non-Blocking Acquisition (`std::try_to_lock`)
+
+In `try_steal_into`:
+```cpp
+const std::unique_lock lock(local_queue_mutex_, std::try_to_lock);
+if (!lock.owns_lock())
+    return false; // Yield immediately if victim queue is locked
+```
+Using `try_to_lock` guarantees that two peer workers attempting to steal from each other will never deadlock.
+
+### 3. Half-Queue Splitting
+
+If the victim has $N$ tasks in its local queue:
+* The thief calculates `to_steal = std::max<size_t>(1, N / 2)`.
+* It transfers `to_steal` tasks from the victim's head into its own local queue.
+* The victim's head index advances accordingly.
+* The thief immediately pops one stolen task and executes it.
+
+---
+
+## 4. Worker Parking and Unparking
+
+To minimize CPU usage when the runtime is idle:
+
+1. **Parking (`park()`):**
+   * Atomically sets `parked_ = true`.
+   * Re-checks local and global queues under lock to prevent lost-wakeup race conditions.
+   * If both are still empty, enters `park_cv_.wait(lock, ...)` until a task is queued or `stop_requested_` is set.
+2. **Unparking (`unpark()`):**
+   * Atomically exchanges `parked_` from `true` to `false`.
+   * If the worker was parked, notifies `park_cv_`.
+   * The runtime helper `notify_one_idle_worker()` scans workers and unparks the first idle worker found whenever a task is pushed.
+
+---
+
+## 5. Teardown & Drain Guarantees
+
+During `runtime::~runtime()`:
+1. `stop_requested_` is set with `memory_order_release`.
+2. All workers are explicitly unparked via `w->unpark()`.
+3. Workers exit their `run()` loops and their `std::thread` instances are joined.
+
+---
+
+## 6. Implementation Notes for Contributors
+
+* **Queue Capacity (256):** If a local queue is full when scheduling a coroutine, the task overflows into the global queue via `put_task_in_queue`.
+* **Lock Granularity:** Mutexes protect the local ring buffers and the global queue. Lock hold times are strictly $O(1)$ pointer adjustments.
+
+---
+
+## 7. Related Pages
+
+* [Core Concepts: Scheduling](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/scheduling.mdx) — User-facing scheduling contracts.
+* [Runtime Architecture & Asio](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/architecture-and-asio.mdx) — How I/O completions interact with worker queues.

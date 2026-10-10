@@ -1,0 +1,114 @@
+---
+title: Installation and Setup
+description: Supported compilers, C++ standard requirements, and CMake integration for Coasio.
+---
+
+# Installation and Setup
+
+This page guides you through the requirements and CMake setup needed to include Coasio in your C++ projects.
+
+---
+
+## 1. Purpose
+
+Coasio requires modern C++23 features (such as `std::expected`, explicit object parameters / deduced `this`, move-only functions, and standard coroutine support) along with standalone Asio. This guide explains how to properly configure your build system to consume Coasio.
+
+---
+
+## 2. Prerequisites
+
+Before installing Coasio, ensure your development environment satisfies the following minimum requirements:
+
+* **CMake:** Version `3.20` or later (tested up to `3.31`).
+* **C++ Standard:** C++23 (`-std=c++23` or `/std:c++latest` / `/std:c++23`).
+* **Threading Support:** Operating system thread libraries (e.g. `pthreads` on Linux).
+* **Asio:** Standalone Asio version `1.38.2`. When using CMake `FetchContent`, this dependency is fetched automatically.
+
+### Officially Tested Toolchains
+
+| Operating System | Architecture | Compiler | Standard Library | Support Status |
+| :--- | :--- | :--- | :--- | :--- |
+| **Windows** | x86-64 | MSVC 19.33+ (Visual Studio 2022) | MSVC STL | **Officially Supported** |
+| **Linux** | x86-64 | GCC 12 or newer | libstdc++ | **Officially Supported** |
+| **Linux** | x86-64 | Clang (with libc++) | libc++ | *Not currently considered supported* |
+
+:::note
+Clang with `libc++` has known issues with certain C++23 coroutine traits and explicit object parameter extensions in current versions. If targeting Clang, build against GCC's `libstdc++`.
+::
+
+---
+
+## 3. Example: CMake Integration
+
+The recommended way to consume Coasio in your application is via CMake's [`FetchContent`](https://cmake.org/cmake/help/latest/module/FetchContent.html) module:
+
+```cmake
+cmake_minimum_required(VERSION 3.20)
+project(my_coasio_app LANGUAGES CXX)
+
+set(CMAKE_CXX_STANDARD 23)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+include(FetchContent)
+
+FetchContent_Declare(
+    coasio
+    GIT_REPOSITORY https://github.com/coasio/coasio.git
+    GIT_TAG        main
+    GIT_SHALLOW    TRUE
+)
+FetchContent_MakeAvailable(coasio)
+
+add_executable(my_coasio_app main.cpp)
+target_link_libraries(my_coasio_app PRIVATE coasio::coasio)
+```
+
+If you prefer to install Coasio globally or use a pre-installed package:
+
+```cmake
+find_package(coasio CONFIG REQUIRED)
+target_link_libraries(my_coasio_app PRIVATE coasio::coasio)
+```
+
+---
+
+## 4. Explanation
+
+1. **`coasio::coasio` target:** Coasio exports an alias target `coasio::coasio`. Linking against this target automatically propagates:
+   * Public include directory paths (`<coasio/...>`).
+   * C++23 compile features (`cxx_std_23`).
+   * Dependency on standalone Asio (`ASIO_STANDALONE` and `ASIO_NO_DEPRECATED` flags).
+   * System thread library dependencies (`Threads::Threads`).
+2. **Asio Auto-fetching:** If a target named `asio` does not already exist when Coasio's `CMakeLists.txt` is processed, Coasio automatically downloads and configures standalone Asio `1.38.2`.
+
+---
+
+## 5. Build Options
+
+When configuring the Coasio repository directly as the top-level project, the following CMake options are available:
+
+| Option | Default | Description |
+| :--- | :--- | :--- |
+| `COASIO_BUILD_EXAMPLES` | `ON` (top-level) | Builds sample applications in `examples/` (e.g. echo server, DNS request). |
+| `COASIO_BUILD_TESTS` | `ON` (top-level) | Configures and builds the Catch2 unit test suite in `tests/`. |
+
+To build the project standalone:
+
+```bash
+cmake -B build -S . -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release
+```
+
+---
+
+## 6. Limitations
+
+* **Boost.Asio vs Standalone Asio:** Coasio is built and tested against **standalone Asio**, not `boost::asio`. Mixing headers from both variants in the same compilation unit can cause symbol and header collision.
+* **Header-only vs Static Library:** The core scheduler (`runtime.cpp`) is compiled into a static library `coasio`, while coroutine primitives, networking templates, and filesystem awaiters are delivered as header-only interfaces in `include/`.
+
+---
+
+## 7. Related Pages
+
+* [Your First Task](file:///C:/dev/cpp/coasio/docs/src/content/docs/getting-started/first-task.mdx) — Write and run your first coroutine.
+* [Core Concepts: Tasks](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/tasks.mdx) — Understand `coasio::task<T>`.

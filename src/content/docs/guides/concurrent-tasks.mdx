@@ -1,0 +1,146 @@
+---
+title: Run Several Tasks Concurrently
+description: Learn how to fan out concurrent tasks, collect results, and synchronize shared state.
+---
+
+# Run Several Tasks Concurrently
+
+This guide shows how to spawn multiple concurrent coroutines in Coasio, wait for them to finish, and synchronize access to shared data.
+
+---
+
+## 1. Purpose
+
+Many real-world systems must execute independent operations simultaneously—such as sending multiple HTTP requests, querying distinct database shards, or processing batches of items. You need a safe way to:
+* Fan out several tasks in parallel.
+* Collect all their results or handle partial failures.
+* Restrict maximum concurrency or protect shared resources.
+
+---
+
+## 2. Prerequisites
+
+* [Awaiting and Spawning](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/awaiting-and-spawning.mdx).
+* [Lifetimes and Captures](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/lifetimes.mdx).
+
+---
+
+## 3. Example: Parallel Fetch with a Semaphore
+
+```cpp
+#include <chrono>
+#include <iostream>
+#include <vector>
+#include <coasio.hpp>
+#include <coasio/sync/semaphore.hpp>
+#include <coasio/time.hpp>
+
+using namespace std::chrono_literals;
+
+// Worker coroutine simulating an asynchronous fetch
+coasio::task<int> fetch_item(int id, std::shared_ptr<coasio::sync::semaphore> sem) {
+    // Acquire a permit to limit concurrency
+    auto permit = co_await sem->acquire(1);
+    
+    std::cout << "[Start] Task " << id << " working...\n";
+    co_await coasio::time::sleep(50ms);
+    std::cout << "[End]   Task " << id << " finished.\n";
+    
+    // Permit is automatically released when 'permit' goes out of scope
+    co_return id * 10;
+}
+
+coasio::task<void> run_batch() {
+    // Limit to at most 3 concurrent operations
+    auto sem = std::make_shared<coasio::sync::semaphore>(3);
+    
+    std::vector<coasio::JoinHandle<int>> handles;
+    handles.reserve(10);
+
+    // 1. Fan out 10 tasks
+    for (int i = 0; i < 10; ++i) {
+        handles.push_back(coasio::spawn(fetch_item(i, sem)));
+    }
+
+    // 2. Collect results
+    int total_sum = 0;
+    for (auto &h : handles) {
+        auto result = co_await h.join();
+        if (result) {
+            total_sum += *result;
+        } else {
+            std::cerr << "Task failed: " << result.error().message() << "\n";
+        }
+    }
+
+    std::cout << "All tasks finished! Total sum: " << total_sum << "\n";
+    co_return;
+}
+
+int main() {
+    coasio::runtime rt;
+    rt.block_on(run_batch());
+    return 0;
+}
+```
+
+---
+
+## 4. Explanation
+
+1. **`coasio::spawn`:** Each call to `spawn` creates an independent root task and submits it to the runtime's scheduler. The tasks execute concurrently across all available worker threads.
+2. **`JoinHandle<int>`:** We store the handles in a `std::vector`. Each `JoinHandle` owns a one-shot receiver for the task's return value.
+3. **`coasio::sync::semaphore`:** A coroutine-aware semaphore. Calling `co_await sem->acquire(n)` suspends the calling coroutine without blocking OS threads if no permits are currently available. When a `semaphore_permit` is destroyed, its permits are returned to the semaphore, waking up queued coroutines.
+4. **Collecting with `co_await h.join()`:** We sequentially iterate through the handles and await each one. Note that even though we await them in loop order, all tasks execute concurrently in the background.
+
+---
+
+## 5. Synchronization Primitives
+
+Coasio provides asynchronous, coroutine-safe synchronization primitives under `coasio::sync`:
+
+### `coasio::sync::semaphore`
+
+* **`acquire(n)`:** Suspends until `n` permits are available. Returns an RAII `semaphore_permit`.
+* **`try_acquire(n)`:** Non-suspending; returns `std::optional<semaphore_permit>`.
+* **`cancel_scope` integration:** If an acquiring coroutine is aborted while waiting, the acquisition fails with `coasio::error::cancelled`.
+
+### `coasio::sync::mutex`
+
+Built directly on top of `coasio::sync::semaphore(1)`:
+* **`co_await mtx.lock()`:** Suspends until the lock is acquired. Returns an RAII `mutex_guard`.
+* **`mtx.try_lock()`:** Non-suspending attempt; returns `std::optional<mutex_guard>`.
+
+```cpp
+coasio::sync::mutex mtx;
+
+// Inside a coroutine:
+{
+    auto guard = co_await mtx.lock();
+    // Critical section...
+} // Lock automatically released here
+```
+
+---
+
+## 6. Semantics & Guarantees
+
+| Behavior | Guarantee |
+| :--- | :--- |
+| **Independent Failure** | If one spawned task throws or is aborted, sibling tasks continue running unless explicitly aborted via their `JoinHandle::abort()`. |
+| **Permit Release** | Moving or destructing a `semaphore_permit` or `mutex_guard` guarantees atomic permit restoration and waiter wake-up. |
+| **Exception in Task** | An unhandled exception thrown in a spawned task is rethrown when `co_await h.join()` is called. |
+
+---
+
+## 7. Limitations
+
+* **Do not use `std::mutex` across suspension:** Standard library locks like `std::mutex` and `std::lock_guard` must **never** be held across a `co_await` point. A coroutine may resume on a different OS thread, causing undefined behavior when unlocking from another thread. Always use `coasio::sync::mutex`.
+* **Ordering:** Iterating through `handles` in loop order waits for task 0, then task 1, etc. If task 0 takes longer than task 1, task 1 has already completed and its result is ready immediately when `h.join()` is awaited.
+
+---
+
+## 8. Related Pages
+
+* [Awaiting and Spawning](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/awaiting-and-spawning.mdx)
+* [Combinators and Channels](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/combinators-and-channels.mdx)
