@@ -3,9 +3,8 @@ title: Scheduler Design and Work Stealing
 description: In-depth analysis of Coasio's multi-threaded work-stealing scheduler implementation.
 ---
 
-# Scheduler Design and Work Stealing
 
-This document details the internal design and algorithms powering Coasio's multi-threaded coroutine scheduler ([`coasio::worker`](file:///C:/dev/cpp/coasio/include/coasio/runtime.hpp#L28) and [`coasio::runtime`](file:///C:/dev/cpp/coasio/include/coasio/runtime.hpp#L168)).
+This document details the internal design and algorithms powering Coasio's multi-threaded coroutine scheduler ([`coasio::worker`](https://github.com/coasio/coasio/blob/main/include/coasio/runtime.hpp#L28) and [`coasio::runtime`](https://github.com/coasio/coasio/blob/main/include/coasio/runtime.hpp#L168)).
 
 ---
 
@@ -39,7 +38,7 @@ The scheduler coordinates three layers of task storage:
 
 ## 2. Worker Run Loop
 
-Every coroutine worker thread runs [`coasio::worker::run()`](file:///C:/dev/cpp/coasio/src/runtime.cpp#L3):
+Every coroutine worker thread runs [`coasio::worker::run()`](https://github.com/coasio/coasio/blob/main/src/runtime.cpp#L3):
 
 ```cpp
 void worker::run() {
@@ -138,5 +137,5 @@ During `runtime::~runtime()`:
 
 ## 7. Related Pages
 
-* [Core Concepts: Scheduling](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/scheduling.mdx) — User-facing scheduling contracts.
-* [Runtime Architecture & Asio](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/architecture-and-asio.mdx) — How I/O completions interact with worker queues.
+* [Core Concepts: Scheduling](/concepts/scheduling/) — User-facing scheduling contracts.
+* [Runtime Architecture & Asio](/internals/architecture-and-asio/) — How I/O completions interact with worker queues.

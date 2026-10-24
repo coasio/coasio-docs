@@ -1,0 +1,147 @@
+---
+title: Timers and Clocks Reference
+description: Complete API reference for coasio::time::timer and coasio::time::sleep.
+---
+
+
+The [`<coasio/time.hpp>`](https://github.com/coasio/coasio/blob/main/include/coasio/time.hpp) header provides asynchronous time primitives: the one-shot asynchronous sleep function `coasio::time::sleep` and the reusable, configurable `coasio::time::timer` class template.
+
+---
+
+## 1. Overview & Header
+
+```cpp
+#include <coasio/time.hpp>
+```
+
+Coasio timers are driven by the runtime's dedicated Asio I/O event loop threads. When a timer expires, its continuation is automatically rescheduled onto the coroutine worker thread pool.
+
+---
+
+## 2. Asynchronous Sleep: `coasio::time::sleep`
+
+The most common way to pause a coroutine asynchronously is `coasio::time::sleep`:
+
+```cpp
+auto res = co_await coasio::time::sleep(100ms);
+```
+
+### Signature & Return Type
+
+```cpp
+inline auto sleep(const std::chrono::milliseconds ms);
+```
+
+* **Return Type on `co_await`:** Returns `std::expected<void, std::error_code>`.
+* **Zero / Negative Duration:** If `ms.count() <= 0`, the awaiter completes immediately (`await_ready()` is `true`) without allocating an Asio timer or checking cancellation.
+* **Cooperative Cancellation:** If the task's cancellation scope is aborted while the timer is running, the timer cancels immediately and returns `coasio::error::cancelled` or `asio::error::operation_aborted`.
+
+---
+
+## 3. Reusable Timers: `coasio::time::timer<Clock>`
+
+For recurring intervals, periodic heartbeats, or absolute deadlines, use the `coasio::time::timer` template class:
+
+```cpp
+template <typename Clock = std::chrono::steady_clock>
+class timer;
+```
+
+### Member Types
+
+| Type Alias | Definition |
+| :--- | :--- |
+| `duration` | `Clock::duration` |
+| `time_point` | `Clock::time_point` |
+
+### Factory Methods
+
+| Method | Return Type | Description |
+| :--- | :--- | :--- |
+| `timer::create()` | `timer<Clock>` | Creates an unexpired timer bound to the current runtime's I/O context. |
+| `timer::create(const time_point &expiry_time)` | `timer<Clock>` | Creates a timer configured with an absolute expiration deadline. |
+| `timer::create(const duration &expiry_time)` | `timer<Clock>` | Creates a timer configured to expire relative to now. |
+
+### Member Methods
+
+| Method | Return Type | Description |
+| :--- | :--- | :--- |
+| `wait()` | `async_op<void>` | Asynchronously waits for timer expiration. Yields `std::expected<void, std::error_code>`. |
+| `expires_after(const duration &expiry_time)` | `size_t` | Sets the expiration time relative to now. Cancels any pending asynchronous waits and returns the number of cancelled operations. |
+| `expires_at(const time_point &expiry_time)` | `size_t` | Sets the expiration time as an absolute point in time. Cancels any pending waits. |
+| `expiry()` | `time_point` | Returns the timer's current expiry time. |
+| `cancel()` | `size_t` | Cancels all pending asynchronous operations waiting on this timer. Returns count cancelled. |
+| `cancel_one()` | `size_t` | Cancels a single pending asynchronous operation waiting on this timer. |
+| `asio_handle()` | `asio::basic_waitable_timer<Clock>&` | Accesses the underlying Asio timer instance. |
+
+---
+
+## 4. Usage Examples
+
+### Example 1: Periodic Heartbeat Loop with `expires_after`
+
+Using a single reusable timer instance avoids allocating new Asio timer handles on every loop iteration:
+
+```cpp
+#include <chrono>
+#include <iostream>
+#include <coasio.hpp>
+#include <coasio/time.hpp>
+
+using namespace std::chrono_literals;
+
+coasio::task<void> periodic_heartbeat() {
+    auto t = coasio::time::timer<>::create();
+
+    for (int i = 0; i < 5; ++i) {
+        // Set next deadline 500ms from now
+        t.expires_after(500ms);
+
+        auto res = co_await t.wait();
+        if (!res) {
+            std::cerr << "Timer cancelled: " << res.error().message() << "\n";
+            co_return;
+        }
+
+        std::cout << "[Heartbeat] tick " << i << "\n";
+    }
+
+    co_return;
+}
+```
+
+### Example 2: Absolute Deadline with `std::chrono::system_clock`
+
+You can use standard clock types such as `std::chrono::system_clock` for real-time calendar deadlines:
+
+```cpp
+#include <chrono>
+#include <coasio.hpp>
+#include <coasio/time.hpp>
+
+coasio::task<void> wait_until_deadline(std::chrono::system_clock::time_point deadline) {
+    auto t = coasio::time::timer<std::chrono::system_clock>::create(deadline);
+
+    auto res = co_await t.wait();
+    if (res) {
+        std::cout << "Deadline reached!\n";
+    }
+    co_return;
+}
+```
+
+---
+
+## 5. Cancellation Behavior
+
+1. **Task Abort:** If the task awaiting `co_await t.wait()` or `co_await coasio::time::sleep(...)` is aborted via its [`cancel_scope`](/reference/cancellation/), the pending timer operation receives an Asio cancellation signal.
+2. **Error Code:** When cancelled, the awaiter resumes with `std::unexpected` containing `asio::error::operation_aborted` or `coasio::error::cancelled`.
+3. **Explicit Timer Reset:** Calling `t.expires_after(...)` or `t.cancel()` on an active timer automatically cancels currently waiting operations with `asio::error::operation_aborted`.
+
+---
+
+## 6. Related Pages
+
+* [Cancellation Semantics](/reference/cancellation/) — How cancellation signals abort active timers.
+* [Combinators & Channels](/guides/combinators-and-channels/) — Using `coasio::timeout` with duration deadlines.
+* [Error Types and Propagation](/reference/errors/) — Error handling with `std::expected`.

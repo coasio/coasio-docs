@@ -3,7 +3,6 @@ title: Getting Started
 description: An introduction to building asynchronous applications with Coasio in C++23.
 ---
 
-# Getting Started
 
 Coasio is a high-performance **C++23 coroutine runtime** built on top of [standalone Asio](https://think-async.com/Asio/). It separates asynchronous I/O event polling from coroutine task execution, pairing Asio's network and timer drivers with a dedicated multi-threaded work-stealing scheduler.
 
@@ -16,7 +15,7 @@ Traditional asynchronous C++ programming with callback-based Asio often leads to
 Coasio bridges this gap by providing:
 
 1. **First-class Coroutine Primitives:** Move-only `coasio::task<T>` with symmetric transfer for zero-overhead coroutine chaining.
-2. **Dedicated Coroutine Scheduler:** Coroutine suspensions and resumptions run on a pool of worker threads with lock-free and work-stealing queues, decoupled from the I/O event loop.
+2. **Dedicated Coroutine Scheduler:** Coroutine suspensions and resumptions run on a pool of worker threads with round-robin work-stealing queues, decoupled from the I/O event loop.
 3. **Structured Asynchronous I/O:** High-level wrappers for TCP, UDP, timers, and filesystem streams that return `std::expected<T, std::error_code>` and integrate seamlessly with `co_await`.
 4. **Cooperative Cancellation Trees:** Hierarchical cancellation scopes that automatically propagate through parent-child task hierarchies and trigger Asio cancellation slots.
 5. **Safe Blocking Offload:** A built-in thread pool for offloading synchronous file system calls or third-party blocking routines via `coasio::spawn_blocking`.
@@ -25,15 +24,15 @@ Coasio bridges this gap by providing:
 
 ## Quick Tour of the Documentation
 
-* **[Installation](file:///C:/dev/cpp/coasio/docs/src/content/docs/getting-started/installation.mdx):** Compiler requirements, CMake integration, and dependency setup.
-* **[Your First Task](file:///C:/dev/cpp/coasio/docs/src/content/docs/getting-started/first-task.mdx):** Write, build, and run a minimal coroutine application.
-* **[Core Concepts](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/tasks.mdx):** Understand `task<T>`, scheduling, work stealing, and lifetime guarantees.
-* **[Guides](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/index.mdx):** Practical step-by-step recipes for concurrent tasks, TCP sockets, files, and blocking operations.
-* **[Reference](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/index.mdx):** Detailed specifications for networking, filesystem, errors, and cancellation.
-* **[Internals](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/index.mdx):** Architectural deep dive for contributors and advanced systems engineers.
+* **[Installation](/getting-started/installation/):** Compiler requirements, CMake integration, and dependency setup.
+* **[Your First Task](/getting-started/first-task/):** Write, build, and run a minimal coroutine application.
+* **[Core Concepts](/concepts/tasks/):** Understand `task<T>`, scheduling, work stealing, and lifetime guarantees.
+* **[Guides](/guides/):** Practical step-by-step recipes for concurrent tasks, TCP sockets, files, and blocking operations.
+* **[Reference](/reference/):** Detailed specifications for networking, filesystem, errors, and cancellation.
+* **[Internals](/internals/):** Architectural deep dive for contributors and advanced systems engineers.
 
 ---
 
 ## Next Steps
 
-Head over to the [Installation Guide](file:///C:/dev/cpp/coasio/docs/src/content/docs/getting-started/installation.mdx) to configure your development environment.
+Head over to the [Installation Guide](/getting-started/installation/) to configure your development environment.

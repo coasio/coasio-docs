@@ -1,49 +1,38 @@
-# Starlight Starter Kit: Basics
+# CoAsio Documentation
 
-[![Built with Starlight](https://astro.badg.es/v2/built-with-starlight/tiny.svg)](https://starlight.astro.build)
+Official documentation for **[CoAsio](https://github.com/coasio/coasio)** — a modern C++23 coroutine runtime built on standalone Asio, featuring a dedicated multi-threaded work-stealing scheduler, structured concurrency, and cooperative cancellation trees.
 
+Built with [Astro Starlight](https://starlight.astro.build/) and styled with a custom minimalist dark aesthetic.
+
+## Quick Start
+
+```bash
+# Install dependencies
+yarn install
+
+# Start local development server (background mode per AGENTS.md)
+yarn astro dev --background
+
+# View server status and logs
+yarn astro dev status
+yarn astro dev logs
+
+# Stop dev server
+yarn astro dev stop
+
+# Build production bundle and search index (Pagefind)
+yarn build
 ```
-npm create astro@latest -- --template starlight
-```
 
-> 🧑‍🚀 **Seasoned astronaut?** Delete this file. Have fun!
+## Documentation Structure
 
-## 🚀 Project Structure
+* **`src/content/docs/getting-started/`**: Compiler requirements (GCC 12+, MSVC 19.33+ / VS 2022), CMake integration, and first coroutine task.
+* **`src/content/docs/concepts/`**: Core runtime model (`task<T>`, symmetric transfer, work-stealing scheduler, cancellation trees, lifetimes).
+* **`src/content/docs/guides/`**: Practical recipes for TCP sockets, stream & random-access files, combinators (`select`, `race`, `join`, `timeout`), channels, and offloading blocking work.
+* **`src/content/docs/reference/`**: Detailed specifications for networking, filesystem APIs, error codes, and cancellation contracts.
+* **`src/content/docs/internals/`**: Architectural documentation covering the dual-engine model, scheduler implementation, and testing methodology.
 
-Inside of your Astro + Starlight project, you'll see the following folders and files:
+## Design Philosophy
 
-```
-.
-├── public/
-├── src/
-│   ├── assets/
-│   ├── content/
-│   │   └── docs/
-│   └── content.config.ts
-├── astro.config.mjs
-├── package.json
-└── tsconfig.json
-```
-
-Starlight looks for `.md` or `.mdx` files in the `src/content/docs/` directory. Each file is exposed as a route based on its file name.
-
-Images can be added to `src/assets/` and embedded in Markdown with a relative link.
-
-Static assets, like favicons, can be placed in the `public/` directory.
-
-## 🧞 Commands
-
-All commands are run from the root of the project, from a terminal:
-
-| Command                   | Action                                           |
-| :------------------------ | :----------------------------------------------- |
-| `npm install`             | Installs dependencies                            |
-| `npm run dev`             | Starts local dev server at `localhost:4321`      |
-| `npm run build`           | Build your production site to `./dist/`          |
-| `npm run preview`         | Preview your build locally, before deploying     |
-| `npm run astro ...`       | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help` | Get help using the Astro CLI                     |
-
-## 👀 Want to learn more?
-
-Check out [Starlight’s docs](https://starlight.astro.build/), read [the Astro documentation](https://docs.astro.build), or jump into the [Astro Discord server](https://astro.build/chat).
+- **Human-Centric & Focused**: Vermillion accent (`#e05344`), obsidian dark theme (`#0c0d11`), clean monospace accents, zero visual clutter.
+- **Accurate to Code**: All API signatures, types, and return values mirror the active C++ codebase in `coasio`.

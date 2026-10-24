@@ -3,7 +3,6 @@ title: Error Types and Propagation
 description: Error codes, expected types, and exception propagation in Coasio.
 ---
 
-# Error Types and Propagation
 
 Coasio combines C++23 [`std::expected`](https://en.cppreference.com/w/cpp/utility/expected) and [`std::error_code`](https://en.cppreference.com/w/cpp/error/error_code) for operational errors with standard C++ exception propagation for unexpected task failures.
 
@@ -28,7 +27,7 @@ Coasio uses `std::expected<T, std::error_code>` for operational results and pres
 
 ## 3. The `coasio::error` Enumeration
 
-The [`coasio::error`](file:///C:/dev/cpp/coasio/include/coasio/error.hpp) enum defines core runtime errors:
+The [`coasio::error`](https://github.com/coasio/coasio/blob/main/include/coasio/error.hpp) enum defines core runtime errors:
 
 ```cpp
 namespace coasio {
@@ -88,7 +87,7 @@ fetch_payload(std::string_view endpoint) {
 | Scenario | Behavior | Delivery Mechanism |
 | :--- | :--- | :--- |
 | **I/O Failure (EOF, Connection reset)** | Expected operational result. | Delivered as `std::unexpected(std::error_code)` in return value. |
-| **Cancellation** | Scope aborted. | Delivered as `std::unexpected(coasio::error::cancelled)`. |
+| **Cancellation** | Scope aborted or operation timed out. | Delivered as `std::unexpected(coasio::error::cancelled)` (synchronization primitives, `async_op`) or `asio::error::operation_aborted` (Asio socket I/O, `time::sleep`). Combinator timeouts yield `std::errc::timed_out`. |
 | **Exception inside Coroutine** | Uncaught exception in coroutine body. | Captured in `promise_type` as `std::exception_ptr`; rethrown at `co_await` or when awaiting `JoinHandle::join()`. |
 | **Exception inside `spawn_blocking`** | Function passed to `spawn_blocking` throws. | Captured in control block; rethrown when awaiting the blocking awaiter. |
 | **Calling `block_on` inside worker** | Contract violation. | Triggers an immediate `assert(worker::current() == nullptr)` failure. |
@@ -115,5 +114,5 @@ if (!res) {
 
 ## 7. Related Pages
 
-* [Cancellation Semantics](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/cancellation.mdx) — Cancellation scopes and token lifecycle.
-* [Networking Reference](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/networking.mdx) — Socket return types and error codes.
+* [Cancellation Semantics](/reference/cancellation/) — Cancellation scopes and token lifecycle.
+* [Networking Reference](/reference/networking/) — Socket return types and error codes.

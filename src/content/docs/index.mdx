@@ -1,17 +1,16 @@
-
 ---
-title: Coasio
+title: CoAsio
 description: A C++23 coroutine runtime built on Asio, with a separate scheduler for coroutine execution.
 template: splash
 hero:
-  title: Coasio
-  tagline: Structured asynchronous programming for modern C++.
+  title: CoAsio
+  tagline: C++23 coroutines on Asio. Structured, deterministic, and built for real systems.
   actions:
-    - text: Get started
+    - text: Start Building
       link: getting-started/
       icon: right-arrow
       variant: primary
-    - text: View on GitHub
+    - text: Source on GitHub
       link: https://github.com/coasio/coasio
       icon: external
       variant: minimal
@@ -19,26 +18,92 @@ hero:
 
 import { Card, CardGrid } from '@astrojs/starlight/components';
 
-Coasio is a C++23 coroutine runtime built on Asio. It uses Asio for asynchronous I/O and timers while providing a separate scheduler for coroutine execution.
+<div class="craft-badge-row">
+  <span class="craft-pill active">v0.0.1</span>
+  <span class="craft-pill">C++23 Standard</span>
+  <span class="craft-pill">Standalone Asio</span>
+  <span class="craft-pill">Work-Stealing Scheduler</span>
+  <span class="craft-pill">Structured Concurrency</span>
+</div>
 
-<CardGrid stagger>
-  <Card title="Coroutine tasks" icon="puzzle">
-    Compose asynchronous operations with `co_await`, return values, and propagate failures.
+We love Asio. It's the battle-tested backbone of high-performance C++ networking. But writing asynchronous code with raw completion handlers and callbacks in 2026 feels like writing assembly when modern language coroutines exist.
+
+**CoAsio** bridges the gap. It keeps Asio where it shines—multiplexing I/O and driving timers—while providing a separate, dedicated scheduler for coroutines.
+
+---
+
+### What it looks like in practice
+
+Write sequential-looking code that executes asynchronously without blocking the event loop:
+
+```cpp title="echo_server.cpp"
+#include <coasio.hpp>
+#include <coasio/net/tcp.hpp>
+#include <iostream>
+#include <vector>
+
+coasio::task<void> handle_client(coasio::net::tcp::socket socket) {
+    std::vector<std::byte> buffer(1024);
+    while (true) {
+        auto read_res = co_await socket.read_some(buffer);
+        if (!read_res || *read_res == 0) break; // Disconnected or error
+        
+        auto write_res = co_await socket.write({buffer.data(), *read_res});
+        if (!write_res) break;
+    }
+}
+
+coasio::task<void> start_server(uint16_t port) {
+    auto maybe_listener = coasio::net::tcp::listener::bind(
+        coasio::net::tcp::endpoint{coasio::net::ip_address::v4(), port}
+    );
+    if (!maybe_listener) co_return;
+
+    auto listener = std::move(*maybe_listener);
+    if (!listener.listen()) co_return;
+
+    std::cout << "Listening on port " << port << "...\n";
+
+    while (true) {
+        auto maybe_socket = co_await listener.accept();
+        if (!maybe_socket) break;
+
+        coasio::spawn(handle_client(std::move(*maybe_socket)));
+    }
+}
+```
+
+---
+
+<div class="section-index">01 // ARCHITECTURE & VALUES</div>
+
+### Built for predictability, not buzzwords.
+
+<CardGrid>
+  <Card title="No Hidden Magic" icon="puzzle">
+    Pure C++23 `co_await` and `task<T>`. Clean standard types, explicit cancellation scopes, and structured task lifecycles.
   </Card>
-  <Card title="Scheduled execution" icon="workflow">
-    Spawn independent tasks and execute coroutine work through a dedicated worker pool.
+
+  <Card title="Dual-Engine Architecture" icon="workflow">
+    Asio runs the I/O event demultiplexer (epoll/kqueue/IOCP). A dedicated thread pool runs your coroutines. Network polling never starves compute, and compute never starves I/O.
   </Card>
-  <Card title="Cancellation" icon="circle-stop">
-    Understand cooperative cancellation, propagation, and the limits of cancellation.
+
+  <Card title="Structured Lifetimes" icon="shield">
+    Child tasks do not outlive parent scopes by surprise. Cancellation propagates cooperatively down the task tree so sockets and resources close cleanly.
   </Card>
-  <Card title="Networking and files" icon="network">
-    Explore the asynchronous I/O facilities exposed through Coasio.
+
+  <Card title="Standalone Asio Backend" icon="network">
+    CoAsio is built directly on standalone Asio (1.38+) for OS-native multiplexing without imposing external dependencies or heavy macro abstractions.
   </Card>
 </CardGrid>
 
-## Explore Coasio
+---
 
-- **Getting started:** install the library and write your first asynchronous program.
-- **Core concepts:** learn tasks, scheduling, lifetimes, and task composition.
-- **Guides:** follow practical examples for common programming tasks.
-- **Reference:** look up public APIs, errors, cancellation, networking, and filesystem support.
+<div class="section-index">02 // EXPLORE THE DOCS</div>
+
+### Where to go next
+
+* [**Quickstart Guide**](getting-started/): Install CoAsio via CMake and run your first coroutine.
+* [**Tasks & Execution**](concepts/tasks/): How `task<T>` works, suspension points, and memory semantics.
+* [**Scheduling Model**](concepts/scheduling/): Understanding work-stealing, worker loops, and executor boundaries.
+* [**Networking & File I/O**](guides/tcp-operations/): Socket streams, buffering strategies, and non-blocking filesystem calls.

@@ -3,7 +3,6 @@ title: Testing and Benchmarking Methodology
 description: Architecture of the Catch2 test suite, stress testing, and verification strategies in Coasio.
 ---
 
-# Testing and Benchmarking Methodology
 
 This document outlines the testing strategies, stress tests, and verification methodology used to maintain reliability and performance in Coasio.
 
@@ -15,11 +14,12 @@ Coasio uses the [Catch2](https://github.com/catchorg/Catch2) test framework for 
 
 | Directory / File | Focus Area | What It Validates |
 | :--- | :--- | :--- |
-| [`tests/runtime_basic.cpp`](file:///C:/dev/cpp/coasio/tests/runtime_basic.cpp) | Core Runtime & Scheduler | `block_on` return values, worker thread ID isolation, multi-task completion, `JoinHandle` semantics, sleep deadlines, and clean runtime destruction. |
-| [`tests/blocking/spawn_blocking.cpp`](file:///C:/dev/cpp/coasio/tests/blocking/spawn_blocking.cpp) | Blocking Thread Pool | Task offloading, queue cancellation, exception propagation across threads, pool drainage. |
-| [`tests/sync/oneshot.cpp`](file:///C:/dev/cpp/coasio/tests/sync/oneshot.cpp) | One-Shot Channels | Value passing, dropped sender/receiver detection, concurrent send/receive races. |
-| [`tests/sync/semaphore.cpp`](file:///C:/dev/cpp/coasio/tests/sync/semaphore.cpp) | Asynchronous Semaphore | Permit acquisition, FIFO waiter wake-up, cancellation while waiting for permits, contention under concurrency. |
-| [`examples/smoke_test.cpp`](file:///C:/dev/cpp/coasio/examples/smoke_test.cpp) | Stress & Scale Testing | Throughput test creating and scheduling **1,000,000 coroutine tasks**. |
+| [`tests/runtime_basic.cpp`](https://github.com/coasio/coasio/blob/main/tests/runtime_basic.cpp) | Core Runtime & Scheduler | `block_on` return values, worker thread ID isolation, multi-task completion, `JoinHandle` semantics, sleep deadlines, and clean runtime destruction. |
+| [`tests/combinators/`](https://github.com/coasio/coasio/tree/main/tests/combinators) | Async Combinators | Concurrent resolution for `select.cpp`, `race.cpp`, `timeout.cpp`, and `join.cpp`, cancellation propagation, and exception forwarding. |
+| [`tests/blocking/spawn_blocking.cpp`](https://github.com/coasio/coasio/blob/main/tests/blocking/spawn_blocking.cpp) | Blocking Thread Pool | Task offloading, queue cancellation, exception propagation across threads, pool drainage. |
+| [`tests/sync/oneshot.cpp`](https://github.com/coasio/coasio/blob/main/tests/sync/oneshot.cpp) | One-Shot Channels | Value passing, dropped sender/receiver detection, concurrent send/receive races. |
+| [`tests/sync/semaphore.cpp`](https://github.com/coasio/coasio/blob/main/tests/sync/semaphore.cpp) | Asynchronous Semaphore | Permit acquisition, FIFO waiter wake-up, cancellation while waiting for permits, contention under concurrency. |
+| [`examples/smoke_test.cpp`](https://github.com/coasio/coasio/blob/main/examples/smoke_test.cpp) | Stress & Scale Testing | Throughput test creating and scheduling **1,000,000 coroutine tasks**. |
 
 ---
 
@@ -35,10 +35,10 @@ TEST_CASE("spawn runs on a worker thread, not the calling thread") {
     std::atomic<std::thread::id> worker_id{};
     auto main_id = std::this_thread::get_id();
 
-    auto h = rt.spawn([&worker_id]() -> coasio::task<void> {
-        worker_id.store(std::this_thread::get_id());
+    auto h = rt.spawn([](std::atomic<std::thread::id> *wid) -> coasio::task<void> {
+        wid->store(std::this_thread::get_id(), std::memory_order_release);
         co_return;
-    }());
+    }(&worker_id));
 
     rt.block_on(h.join());
     REQUIRE(worker_id.load() != std::thread::id{});
@@ -131,7 +131,28 @@ This verifies:
 
 ---
 
-## 5. Related Pages
+## 5. Continuous Integration Pipelines
 
-* [Runtime Architecture & Asio](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/architecture-and-asio.mdx)
-* [Scheduler Design & Work Stealing](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/scheduler-and-work-stealing.mdx)
+Coasio maintains automated GitHub Actions workflows triggered on every pull request and push to `main`:
+
+| Workflow | Runner OS | Compiler & Flags | Build Type | Verification Steps |
+| :--- | :--- | :--- | :--- | :--- |
+| **`ci-gcc.yml`** | `ubuntu-24.04` | GCC 12 (`g++-12`), Ninja | Release (`-O3`) | `CMakeLists.txt` & FetchContent cache, full compilation with `-j`, and `ctest --timeout 60`. |
+| **`ci-msvc.yml`** | `windows-latest` | MSVC (`cl`), Ninja | Release | `setup-msvc`, FetchContent cache, full compilation with `-j`, and `ctest --timeout 60`. |
+
+```bash
+# Exact flags used in CI:
+cmake -B build -G Ninja \
+  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_CXX_STANDARD=23 \
+  -DCOASIO_BUILD_TESTS=ON
+
+ctest --test-dir build --output-on-failure --timeout 60 -C Release
+```
+
+---
+
+## 6. Related Pages
+
+* [Runtime Architecture & Asio](/internals/architecture-and-asio/)
+* [Scheduler Design & Work Stealing](/internals/scheduler-and-work-stealing/)

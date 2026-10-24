@@ -3,9 +3,8 @@ title: Perform Asynchronous TCP Operations
 description: Build asynchronous TCP servers and clients using Coasio's networking API.
 ---
 
-# Perform Asynchronous TCP Operations
 
-This guide covers how to implement high-throughput asynchronous TCP servers and clients using Coasio's [`coasio::net::tcp`](file:///C:/dev/cpp/coasio/include/coasio/net/tcp.hpp) abstractions.
+This guide covers how to implement high-throughput asynchronous TCP servers and clients using Coasio's [`coasio::net::tcp`](https://github.com/coasio/coasio/blob/main/include/coasio/net/tcp.hpp) abstractions.
 
 ---
 
@@ -18,7 +17,7 @@ Network programming requires non-blocking socket handling so that waiting for ne
 ## 2. Prerequisites
 
 * Basic knowledge of TCP/IP networking (listeners, sockets, endpoints).
-* [`coasio::task<T>`](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/tasks.mdx) and `std::expected`.
+* [`coasio::task<T>`](/concepts/tasks/) and `std::expected`.
 
 ---
 
@@ -65,7 +64,7 @@ coasio::task<void> handle_session(tcp::socket sock) {
 
 // Main server loop accepting incoming connections
 coasio::task<void> echo_server(uint16_t port) {
-    auto ep = tcp::endpoint{ip_address::v4_any(), port};
+    auto ep = tcp::endpoint{ip_address::v4(), port};
     
     // Bind and listen
     auto maybe_listener = tcp::listener::bind(ep, /*reuse_address=*/true);
@@ -168,5 +167,5 @@ Coasio socket functions accept any contiguous range of byte-like elements (`char
 
 ## 8. Related Pages
 
-* [Networking Reference](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/networking.mdx) — Full API reference for TCP and UDP classes.
-* [Cancellation](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/cancellation.mdx) — How network cancellation scopes work.
+* [Networking Reference](/reference/networking/) — Full API reference for TCP and UDP classes.
+* [Cancellation](/reference/cancellation/) — How network cancellation scopes work.

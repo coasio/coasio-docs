@@ -3,9 +3,8 @@ title: Tasks
 description: Understand coasio::task<T> and task<void>, lazy evaluation, and coroutine mechanics.
 ---
 
-# Tasks
 
-[`coasio::task<T>`](file:///C:/dev/cpp/coasio/include/coasio/task.hpp) is the core coroutine primitive in Coasio. It represents an asynchronous computation that yields a value of type `T` (or `void`) upon completion.
+[`coasio::task<T>`](https://github.com/coasio/coasio/blob/main/include/coasio/task.hpp) is the core coroutine primitive in Coasio. It represents an asynchronous computation that yields a value of type `T` (or `void`) upon completion.
 
 ---
 
@@ -73,7 +72,7 @@ When a function returning `coasio::task<T>` is invoked:
 
 No user code inside the coroutine body executes until the task is either:
 * `co_await`ed by another running task, or
-* Submitted to the runtime via [`rt.spawn(...)`](file:///C:/dev/cpp/coasio/include/coasio/runtime.hpp#L309).
+* Submitted to the runtime via [`rt.spawn(...)`](https://github.com/coasio/coasio/blob/main/include/coasio/runtime.hpp#L309).
 
 ### Move-Only and Rvalue `co_await`
 
@@ -139,5 +138,5 @@ This guarantees that if the root task is aborted, all descending awaitables in t
 
 ## 7. Related Pages
 
-* [Awaiting and Spawning](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/awaiting-and-spawning.mdx) — Composing tasks vs spawning independent background tasks.
-* [Lifetimes and Captures](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/lifetimes.mdx) — Critical rules for lambda captures in C++23 coroutines.
+* [Awaiting and Spawning](/concepts/awaiting-and-spawning/) — Composing tasks vs spawning independent background tasks.
+* [Lifetimes and Captures](/concepts/lifetimes/) — Critical rules for lambda captures in C++23 coroutines.

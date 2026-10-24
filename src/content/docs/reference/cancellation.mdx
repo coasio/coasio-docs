@@ -3,9 +3,8 @@ title: Cancellation Semantics
 description: Cooperative cancellation, scopes, guards, and Asio cancellation signal bindings in Coasio.
 ---
 
-# Cancellation Semantics
 
-Coasio provides a **structured, cooperative cancellation system** centered around [`coasio::cancel_scope`](file:///C:/dev/cpp/coasio/include/coasio/cancel_scope.hpp) and [`coasio::cancel_guard`](file:///C:/dev/cpp/coasio/include/coasio/cancel_scope.hpp#L14).
+Coasio provides a **structured, cooperative cancellation system** centered around [`coasio::cancel_scope`](https://github.com/coasio/coasio/blob/main/include/coasio/cancel_scope.hpp) and [`coasio::cancel_guard`](https://github.com/coasio/coasio/blob/main/include/coasio/cancel_scope.hpp#L14).
 
 ---
 
@@ -23,8 +22,8 @@ Coasio guarantees **cooperative cancellation**:
 
 ## 2. Prerequisites
 
-* [`coasio::task<T>`](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/tasks.mdx) and `await_transform`.
-* Understanding of [`coasio::JoinHandle<T>::abort()`](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/awaiting-and-spawning.mdx).
+* [`coasio::task<T>`](/concepts/tasks/) and `await_transform`.
+* Understanding of [`coasio::JoinHandle<T>::abort()`](/concepts/awaiting-and-spawning/).
 
 ---
 
@@ -112,7 +111,7 @@ When an awaitable (such as `coasio::time::sleep` or a socket `read`) suspends:
 | Action | Behavior | Guarantee |
 | :--- | :--- | :--- |
 | **`handle.abort()`** | Sets `cancelled_ = true` on the root's `cancel_scope` and triggers all armed guards. | Any pending I/O or sleep operation in that task hierarchy cancels immediately. |
-| **Sibling Tasks** | Awaiting `co_await child.join()` inside an aborted task. | The awaiting parent receives `coasio::error::cancelled`, but the spawned child **continues running** independently unless explicitly aborted. |
+| **Sibling Tasks** | Awaiting `co_await child.join()` inside an aborted task. | `join()` is uncancellable (`detail::uncancellable`); the joining coroutine continues to await child completion rather than prematurely failing. The child task continues running independently unless explicitly aborted via `child.abort()`. |
 | **`spawn_blocking`** | Offloaded job queued in thread pool. | If cancelled before thread picks it up, dequeued immediately; if already running on OS thread, runs to return. |
 | **Runtime Teardown** | `runtime::~runtime()` | Automatically cancels all live root task scopes and waits for them to terminate. |
 
@@ -120,12 +119,12 @@ When an awaitable (such as `coasio::time::sleep` or a socket `read`) suspends:
 
 ## 6. Limitations
 
-* **Cooperative Requirement:** Cancellation cannot interrupt a thread executing a tight computation loop that does not hit a suspension point. If your coroutine performs long compute iterations, periodically call `co_await coasio::time::sleep(0ms)` or check the cancellation state.
+* **Cooperative Requirement:** Cancellation cannot interrupt a thread executing a tight computation loop that does not hit a suspension point. Long compute iterations should be offloaded via `spawn_blocking`, or explicitly check cancellation tokens at loop boundaries. (Note: `coasio::time::sleep(0ms)` returns immediately and does not check cancellation).
 * **Non-destructive:** Cancellation does not terminate OS threads or kill processes.
 
 ---
 
 ## 7. Related Pages
 
-* [Awaiting and Spawning](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/awaiting-and-spawning.mdx) — Spawning and aborting tasks.
-* [Lifetimes and Safe Shutdown](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/lifetimes.mdx) — Structured shutdown on runtime destruction.
+* [Awaiting and Spawning](/concepts/awaiting-and-spawning/) — Spawning and aborting tasks.
+* [Lifetimes and Safe Shutdown](/concepts/lifetimes/) — Structured shutdown on runtime destruction.

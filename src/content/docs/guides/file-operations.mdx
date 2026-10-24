@@ -3,9 +3,8 @@ title: Work with Files Asynchronously
 description: Non-blocking file I/O, random access files, and filesystem operations in Coasio.
 ---
 
-# Work with Files Asynchronously
 
-Coasio provides asynchronous file streams and filesystem manipulation in the [`coasio::filesystem`](file:///C:/dev/cpp/coasio/include/coasio/filesystem.hpp) namespace.
+Coasio provides asynchronous file streams and filesystem manipulation in the [`coasio::filesystem`](https://github.com/coasio/coasio/blob/main/include/coasio/filesystem.hpp) namespace.
 
 ---
 
@@ -22,7 +21,7 @@ Coasio solves this in two ways:
 ## 2. Prerequisites
 
 * Standard C++ filesystem concepts (`std::filesystem::path`).
-* [`coasio::task<T>`](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/tasks.mdx) and `std::expected`.
+* [`coasio::task<T>`](/concepts/tasks/) and `std::expected`.
 
 ---
 
@@ -99,7 +98,7 @@ int main() {
 
 ## 4. Random Access Files
 
-For scenarios where multiple coroutines need to read or write at arbitrary file offsets without maintaining an internal file seek pointer (such as database engines or cache files), use [`random_access_file`](file:///C:/dev/cpp/coasio/include/coasio/filesystem/file.hpp#L237):
+For scenarios where multiple coroutines need to read or write at arbitrary file offsets without maintaining an internal file seek pointer (such as database engines or cache files), use [`random_access_file`](https://github.com/coasio/coasio/blob/main/include/coasio/filesystem/file.hpp#L237):
 
 ```cpp
 open_options opts;
@@ -112,11 +111,11 @@ if (maybe_raf) {
 
     std::string header = "HEADER_V1";
     // Write at offset 0
-    co_await raf.write_at(0, header);
+    co_await raf.write(0, header);
 
     std::string record = "RECORD_42";
     // Write at offset 1024 without seeking
-    co_await raf.write_at(1024, record);
+    co_await raf.write(1024, record);
 }
 ```
 
@@ -124,7 +123,7 @@ if (maybe_raf) {
 
 ## 5. Asynchronous Filesystem Utilities
 
-The [`coasio::filesystem`](file:///C:/dev/cpp/coasio/include/coasio/filesystem.hpp) namespace mirrors common `std::filesystem` functions as coroutines that return `task<std::expected<T, std::error_code>>`:
+The [`coasio::filesystem`](https://github.com/coasio/coasio/blob/main/include/coasio/filesystem.hpp) namespace mirrors common `std::filesystem` functions as coroutines that return `task<std::expected<T, std::error_code>>`:
 
 | Function | Operation |
 | :--- | :--- |
@@ -144,7 +143,7 @@ Because these functions invoke `spawn_blocking`, they will not block the corouti
 
 ## 6. Semantics & Guarantees
 
-* **Encoding:** Paths accept `std::filesystem::path`. On Windows, wide paths are normalized.
+* **Encoding:** Paths accept `std::filesystem::path`. (Note: paths are converted via `p.string()`; native Windows wide-path handle creation via `CreateFileW` is planned).
 * **Return Values:** Operations return `std::expected<T, std::error_code>`, mapping filesystem errors to `std::error_code`.
 * **Syncing:** `f.sync_data()` flushes file contents; `f.sync_all()` flushes file contents and metadata.
 
@@ -159,5 +158,5 @@ Because these functions invoke `spawn_blocking`, they will not block the corouti
 
 ## 8. Related Pages
 
-* [Filesystem Reference](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/filesystem.mdx) — Full options and API reference.
-* [Executing Blocking Work Safely](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/blocking-work.mdx) — How `spawn_blocking` works under the hood.
+* [Filesystem Reference](/reference/filesystem/) — Full options and API reference.
+* [Executing Blocking Work Safely](/guides/blocking-work/) — How `spawn_blocking` works under the hood.

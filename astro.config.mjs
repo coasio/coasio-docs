@@ -4,66 +4,57 @@ import starlight from '@astrojs/starlight';
 
 // https://astro.build/config
 export default defineConfig({
-  site: 'https://coasio.github.io',
-  base: '/coasio-docs',
+	site: 'https://coasio.github.io',
+	base: '/',
 
 	integrations: [
 		starlight({
 			title: 'CoAsio',
 			description: 'A C++23 coroutine runtime built on Asio, with a separate scheduler for coroutine execution.',
-
-			defaultLocale: 'root',
-			locales: {
-				root: {
-					label: 'English',
-					lang: 'en',
-				},
-			},
-
-			social: [{ icon: 'github', label: 'GitHub', href: 'https://github.com/coasio/coasio' }],
-
-			editLink: {
-				baseUrl: 'https://github.com/coasio/coasio/edit/main/docs/',
-			},
-
+			social: [
+				{ icon: 'github', label: 'GitHub', href: 'https://github.com/coasio/coasio' }
+			],
 			customCss: ['./src/styles/custom.css'],
-
+			components: {
+				ThemeSelect: './src/components/ThemeToggle.astro',
+			},
 			sidebar: [
 				{
-          label: 'Start here',
-          items: [
-            'getting-started',
-            'getting-started/installation',
-            'getting-started/first-task',
-          ],
-        },
+					label: 'Start Here',
+					items: [
+						{ label: 'Introduction', slug: 'getting-started' },
+						{ label: 'Installation', slug: 'getting-started/installation' },
+						{ label: 'First Task', slug: 'getting-started/first-task' },
+					],
+				},
 				{
-          label: 'Core concepts',
-          items: [
-            'concepts/tasks',
-            'concepts/awaiting-and-spawning',
-            'concepts/scheduling',
-            'concepts/lifetimes',
-          ],
-        },
+					label: 'Core Concepts',
+					items: [
+						{ label: 'Tasks & Coroutines', slug: 'concepts/tasks' },
+						{ label: 'Awaiting & Spawning', slug: 'concepts/awaiting-and-spawning' },
+						{ label: 'Scheduling & Work Stealing', slug: 'concepts/scheduling' },
+						{ label: 'Lifetimes & Safety', slug: 'concepts/lifetimes' },
+					],
+				},
 				{
-          label: 'Guides',
+					label: 'Guides',
 					items: [{ autogenerate: { directory: 'guides' } }],
-        },
+				},
 				{
-          label: 'Reference',
-          items: [
-            'reference',
-            'reference/errors',
-            'reference/cancellation',
-            'reference/networking',
-            'reference/filesystem',
-          ],
-        },
+					label: 'Reference',
+					items: [
+						{ label: 'API Overview', slug: 'reference' },
+						{ label: 'Error Handling', slug: 'reference/errors' },
+						{ label: 'Cancellation', slug: 'reference/cancellation' },
+						{ label: 'Timers & Clocks', slug: 'reference/timers' },
+						{ label: 'Networking', slug: 'reference/networking' },
+						{ label: 'Filesystem', slug: 'reference/filesystem' },
+					],
+				},
 				{
-          label: 'Internals',
+					label: 'Internals',
 					items: [{ autogenerate: { directory: 'internals' } }],
-        },
+				},
 			],
 		}),
 	],
