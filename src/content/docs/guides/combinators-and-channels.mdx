@@ -1,33 +1,27 @@
 ---
 title: Combinators and Channels
-description: Message passing with oneshot channels and composing asynchronous operations.
+description: Message passing with oneshot channels and composing asynchronous operations with timeout, race, select, and join.
 ---
 
-# Combinators and Channels
 
-This guide demonstrates inter-task communication using one-shot channels and discusses asynchronous combinators in Coasio.
-
----
-
-## 1. Purpose
-
-When structuring complex coroutine workflows, tasks frequently need to:
-1. Pass values or notifications to other tasks without shared memory locks.
-2. Signal shutdown or event triggers.
-3. Race multiple operations against each other (e.g. executing with a timeout).
+Coasio provides first-class primitives for coordinating asynchronous operations: single-producer single-consumer one-shot channels, plus composition combinators (`timeout`, `race`, `select`, and `join`).
 
 ---
 
-## 2. Prerequisites
+## 1. Overview & Headers
 
-* [Awaiting and Spawning](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/awaiting-and-spawning.mdx).
-* [`coasio::error`](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/errors.mdx) definitions.
+```cpp
+#include <coasio/sync/oneshot.hpp>      // Single-message channel (sender / receiver)
+#include <coasio/sync/mutex.hpp>        // Asynchronous mutex & mutex_guard
+#include <coasio/sync/semaphore.hpp>    // Asynchronous counting semaphore
+#include <coasio/combinators.hpp>       // timeout, race, select, join
+```
 
 ---
 
-## 3. Example: One-Shot Channels
+## 2. One-Shot Channels (`make_oneshot`)
 
-The [`coasio::sync::make_oneshot<T>()`](file:///C:/dev/cpp/coasio/include/coasio/sync/oneshot.hpp#L427) utility creates a single-producer, single-consumer channel for transmitting a single message between coroutines:
+The `coasio::sync::make_oneshot<T>()` factory creates a single-use channel pair: a `sender<T>` and a `receiver<T>`.
 
 ```cpp
 #include <chrono>
@@ -39,91 +33,188 @@ The [`coasio::sync::make_oneshot<T>()`](file:///C:/dev/cpp/coasio/include/coasio
 
 using namespace std::chrono_literals;
 
-// Producer task
 coasio::task<void> producer(coasio::sync::oneshot::sender<std::string> tx) {
-    std::cout << "[Producer] Preparing data...\n";
-    co_await coasio::time::sleep(50ms);
-
-    // Send the value
-    auto res = tx.send("Hello from producer task!");
+    co_await coasio::time::sleep(20ms);
+    auto res = tx.send("Payload from producer");
     if (!res) {
-        std::cerr << "[Producer] Receiver dropped before message could be sent.\n";
+        std::cerr << "Receiver was dropped before message could be delivered.\n";
     }
-    co_return;
 }
 
-// Consumer task
 coasio::task<void> consumer(coasio::sync::oneshot::receiver<std::string> rx) {
-    std::cout << "[Consumer] Waiting for message...\n";
-
-    // Await the value from receiver
-    // Returns std::expected<std::string, std::error_code>
-    auto maybe_msg = co_await std::move(rx);
-    if (maybe_msg) {
-        std::cout << "[Consumer] Received: " << *maybe_msg << "\n";
+    // Awaiting returns std::expected<T, std::error_code>
+    auto res = co_await std::move(rx);
+    if (res) {
+        std::cout << "Received: " << *res << "\n";
     } else {
-        std::cerr << "[Consumer] Failed: " << maybe_msg.error().message() << "\n";
+        std::cerr << "Error: " << res.error().message() << "\n";
     }
-    co_return;
-}
-
-coasio::task<void> channel_demo() {
-    // 1. Create a oneshot channel pair
-    auto [tx, rx] = coasio::sync::make_oneshot<std::string>();
-
-    // 2. Spawn producer and consumer
-    coasio::spawn(producer(std::move(tx)));
-    co_await consumer(std::move(rx));
-
-    co_return;
 }
 
 int main() {
     coasio::runtime rt;
-    rt.block_on(channel_demo());
-    return 0;
+    rt.block_on([]() -> coasio::task<void> {
+        auto [tx, rx] = coasio::sync::make_oneshot<std::string>();
+        coasio::spawn(producer(std::move(tx)));
+        co_await consumer(std::move(rx));
+    }());
+}
+```
+
+### Semantics & Guarantees
+* **`tx.send(value)`:** Moves the value into shared state and wakes the waiting coroutine. If the receiver was dropped or aborted, `send` returns `std::unexpected(value)`, returning value ownership.
+* **`co_await std::move(rx)`:** Suspends until the sender produces a value. If the sender is dropped without sending, resumes with `coasio::error::channel_closed`. If the parent task cancels, resumes with `coasio::error::cancelled`.
+
+---
+
+## 3. Combinators
+
+Coasio includes four fundamental asynchronous combinators in namespace `coasio::combinators` (also aliased in `coasio::`):
+
+### 3.1 `timeout(duration, awaitable)`
+
+Wraps an operation with a deadline. If the operation completes before the deadline, it returns the result. If the deadline expires first, the child operation is cancelled cooperatively and `timeout` returns `std::unexpected(std::errc::timed_out)`.
+
+```cpp
+#include <chrono>
+#include <coasio.hpp>
+#include <coasio/combinators.hpp>
+#include <coasio/time.hpp>
+
+using namespace std::chrono_literals;
+
+coasio::task<std::string> fetch_remote() {
+    co_await coasio::time::sleep(50ms);
+    co_return "response payload";
+}
+
+coasio::task<void> example_timeout() {
+    // Returns std::expected<std::string, std::error_code>
+    auto res = co_await coasio::timeout(100ms, fetch_remote());
+
+    if (res) {
+        std::cout << "Success: " << *res << "\n";
+    } else if (res.error() == std::errc::timed_out) {
+        std::cout << "Request timed out after 100ms\n";
+    }
+}
+```
+
+### 3.2 `race(awaitable1, awaitable2, ...)`
+
+Races multiple operations concurrently. Returns the value of whichever operation finishes first. All losing branches are immediately cancelled and drained before `race` resumes.
+
+```cpp
+#include <coasio.hpp>
+#include <coasio/combinators.hpp>
+#include <coasio/time.hpp>
+
+using namespace std::chrono_literals;
+
+coasio::task<int> query_primary() {
+    co_await coasio::time::sleep(30ms);
+    co_return 10;
+}
+
+coasio::task<int> query_mirror() {
+    co_await coasio::time::sleep(10ms);
+    co_return 20;
+}
+
+coasio::task<void> example_race() {
+    // Both query_primary and query_mirror run concurrently.
+    // The faster one (query_mirror) wins.
+    auto res = co_await coasio::race(query_primary(), query_mirror());
+
+    if (res) {
+        std::cout << "First result: " << *res << "\n"; // 20
+    }
+}
+```
+
+### 3.3 `select(awaitable1, awaitable2, ...)`
+
+Like `race`, but supports heterogenous return types by returning a `std::variant<branch_result<Index, Type>...>`.
+
+```cpp
+#include <coasio.hpp>
+#include <coasio/combinators.hpp>
+#include <coasio/time.hpp>
+
+using namespace std::chrono_literals;
+
+coasio::task<std::string> read_socket();
+coasio::task<void> heartbeat();
+
+coasio::task<void> example_select() {
+    auto res = co_await coasio::select(read_socket(), heartbeat());
+
+    if (!res) {
+        std::cerr << "Select failed: " << res.error().message() << "\n";
+        co_return;
+    }
+
+    // Inspect which branch completed
+    if (res->index() == 0) {
+        auto &branch = std::get<0>(*res);
+        std::cout << "Socket read: " << branch.value << "\n";
+    } else {
+        std::cout << "Heartbeat ticked first\n";
+    }
+}
+```
+
+### 3.4 `join(awaitable1, awaitable2, ...)`
+
+Awaits multiple operations concurrently and resumes when **all** branches have completed.
+* **Return Value:** Returns `std::expected<std::tuple<...>, std::error_code>`.
+* **Void Tasks:** Because standard `std::tuple` cannot store `void`, void-returning awaitables are normalized to `std::monostate` in the resulting tuple (e.g., joining `task<void>` and `task<int>` produces `std::tuple<std::monostate, int>`).
+* **Exceptions:** If any branch throws an unhandled exception, it immediately aborts sibling branches and rethrows that exception.
+* **Operational Errors:** If an awaitable yields a `std::expected` with an error, the error is preserved within that branch's element of the output tuple. The other branches continue executing.
+
+---
+
+## 4. Synchronization Primitives
+
+### `coasio::sync::mutex`
+An asynchronous mutex that suspends the calling coroutine without blocking OS worker threads:
+
+```cpp
+#include <coasio/sync/mutex.hpp>
+
+coasio::sync::mutex mtx;
+
+coasio::task<void> safe_increment(int &shared_val) {
+    auto permit = co_await mtx.lock();
+    if (!permit) {
+        co_return; // Acquisition was cancelled
+    }
+    ++shared_val;
+    // permit released automatically when leaving scope
+}
+```
+
+### `coasio::sync::semaphore`
+An asynchronous counting semaphore supporting cooperative permit acquisition:
+
+```cpp
+#include <coasio/sync/semaphore.hpp>
+
+coasio::sync::semaphore sem{4}; // Allow up to 4 concurrent callers
+
+coasio::task<void> rate_limited_work() {
+    auto permit = co_await sem.acquire(1);
+    if (!permit) {
+        co_return; // Acquisition was cancelled
+    }
+    // Work in protected section
 }
 ```
 
 ---
 
-## 4. Explanation & Semantics
+## 5. Related Topics
 
-### One-Shot Channels (`make_oneshot`)
-
-* **`sender<T>::send(value)`:**
-  * Moves the value into the shared channel state.
-  * Reschedules any waiting coroutine on the receiver.
-  * If the receiver was already dropped or cancelled, `send` returns `std::unexpected(value)`, handing ownership back to the caller.
-* **`receiver<T>::operator co_await()`:**
-  * If the value is already present, resumes immediately without suspension.
-  * Otherwise, registers the awaiting coroutine handle and suspends.
-  * If the sender is dropped without sending a value, resumes with `coasio::error::channel_closed`.
-  * If the receiver's task is aborted, resumes with `coasio::error::cancelled`.
-
----
-
-## 5. Status of Multi-Producer Channels (MPSC) and Combinators
-
-:::note
-**API Status & Roadmaps:**
-
-* **Multi-producer, multi-consumer channels (MPSC/Broadcast):** Higher-level buffered streaming channels are actively under design for future releases. Currently, use [`coasio::sync::make_oneshot<T>()`](file:///C:/dev/cpp/coasio/include/coasio/sync/oneshot.hpp) for single-value handoffs, or combine [`coasio::sync::mutex`](file:///C:/dev/cpp/coasio/include/coasio/sync/mutex.hpp) and [`semaphore`](file:///C:/dev/cpp/coasio/include/coasio/sync/semaphore.hpp) with a `std::deque` for multi-item queues.
-
-* **Race Combinator (`race`):** The header `coasio/combinators/race.hpp` is reserved for future standard combinator support (e.g. `race(task_a, task_b)`). To implement timeouts today, use cooperative cancellation scopes or timer checks with `JoinHandle::abort()`.
-
-:::
-
----
-
-## 6. Limitations
-
-* **Single-use:** A `oneshot::sender` can only send one value. After `send` or destruction, the sender is spent.
-* **Must move receiver:** `operator co_await()` on `oneshot::receiver` requires an rvalue (`std::move(rx)`).
-
----
-
-## 7. Related Pages
-
-* [Run Several Tasks Concurrently](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/concurrent-tasks.mdx) — Synchronizing tasks with semaphores.
-* [Error Reference](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/errors.mdx) — Understanding `coasio::error::channel_closed`.
+* [Concurrent Tasks Guide](/guides/concurrent-tasks/) — Using worker pools and `coasio::spawn`.
+* [Cancellation Reference](/reference/cancellation/) — Cooperative abort propagation in combinators.
+* [Error Reference](/reference/errors/) — Standard error categories and codes.

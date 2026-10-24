@@ -3,7 +3,6 @@ title: Run Several Tasks Concurrently
 description: Learn how to fan out concurrent tasks, collect results, and synchronize shared state.
 ---
 
-# Run Several Tasks Concurrently
 
 This guide shows how to spawn multiple concurrent coroutines in Coasio, wait for them to finish, and synchronize access to shared data.
 
@@ -20,8 +19,8 @@ Many real-world systems must execute independent operations simultaneously—suc
 
 ## 2. Prerequisites
 
-* [Awaiting and Spawning](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/awaiting-and-spawning.mdx).
-* [Lifetimes and Captures](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/lifetimes.mdx).
+* [Awaiting and Spawning](/concepts/awaiting-and-spawning/).
+* [Lifetimes and Captures](/concepts/lifetimes/).
 
 ---
 
@@ -41,6 +40,10 @@ using namespace std::chrono_literals;
 coasio::task<int> fetch_item(int id, std::shared_ptr<coasio::sync::semaphore> sem) {
     // Acquire a permit to limit concurrency
     auto permit = co_await sem->acquire(1);
+    if (!permit) {
+        std::cerr << "Task " << id << " acquisition cancelled\n";
+        co_return 0;
+    }
     
     std::cout << "[Start] Task " << id << " working...\n";
     co_await coasio::time::sleep(50ms);
@@ -101,14 +104,14 @@ Coasio provides asynchronous, coroutine-safe synchronization primitives under `c
 
 ### `coasio::sync::semaphore`
 
-* **`acquire(n)`:** Suspends until `n` permits are available. Returns an RAII `semaphore_permit`.
+* **`acquire(n)`:** Suspends until `n` permits are available. Returns `std::expected<semaphore_permit, std::error_code>`.
 * **`try_acquire(n)`:** Non-suspending; returns `std::optional<semaphore_permit>`.
 * **`cancel_scope` integration:** If an acquiring coroutine is aborted while waiting, the acquisition fails with `coasio::error::cancelled`.
 
 ### `coasio::sync::mutex`
 
 Built directly on top of `coasio::sync::semaphore(1)`:
-* **`co_await mtx.lock()`:** Suspends until the lock is acquired. Returns an RAII `mutex_guard`.
+* **`co_await mtx.lock()`:** Suspends until the lock is acquired. Returns `std::expected<semaphore_permit, std::error_code>`.
 * **`mtx.try_lock()`:** Non-suspending attempt; returns `std::optional<mutex_guard>`.
 
 ```cpp
@@ -116,9 +119,13 @@ coasio::sync::mutex mtx;
 
 // Inside a coroutine:
 {
-    auto guard = co_await mtx.lock();
+    auto permit = co_await mtx.lock();
+    if (!permit) {
+        // Acquisition was cancelled; do not enter critical section!
+        co_return;
+    }
     // Critical section...
-} // Lock automatically released here
+} // Permit automatically released here
 ```
 
 ---
@@ -142,5 +149,5 @@ coasio::sync::mutex mtx;
 
 ## 8. Related Pages
 
-* [Awaiting and Spawning](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/awaiting-and-spawning.mdx)
-* [Combinators and Channels](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/combinators-and-channels.mdx)
+* [Awaiting and Spawning](/concepts/awaiting-and-spawning/)
+* [Combinators and Channels](/guides/combinators-and-channels/)

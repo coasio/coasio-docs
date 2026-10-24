@@ -3,7 +3,6 @@ title: Runtime Architecture and the Role of Asio
 description: How Asio's I/O event loop is isolated and bridged to Coasio's coroutine scheduler.
 ---
 
-# Runtime Architecture and the Role of Asio
 
 This page details how Coasio integrates standalone Asio and why I/O polling is separated from coroutine task execution.
 
@@ -25,7 +24,7 @@ Coasio resolves this by enforcing a strict **two-tier boundary**:
 
 ## 2. The `async_op` Bridge
 
-The core bridge connecting Asio asynchronous operations to Coasio coroutines is [`coasio::detail::async_op`](file:///C:/dev/cpp/coasio/include/coasio/detail/async_op.hpp).
+The core bridge connecting Asio asynchronous operations to Coasio coroutines is [`coasio::detail::async_op`](https://github.com/coasio/coasio/blob/main/include/coasio/detail/async_op.hpp).
 
 ### Implementation Walkthrough
 
@@ -116,5 +115,5 @@ During runtime destruction:
 
 ## 5. Related Pages
 
-* [Scheduler Design & Work Stealing](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/scheduler-and-work-stealing.mdx)
-* [Coroutine & Cancellation Machinery](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/coroutine-and-cancellation.mdx)
+* [Scheduler Design & Work Stealing](/internals/scheduler-and-work-stealing/)
+* [Coroutine & Cancellation Machinery](/internals/coroutine-and-cancellation/)

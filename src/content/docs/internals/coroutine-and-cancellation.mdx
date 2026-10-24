@@ -3,7 +3,6 @@ title: Coroutine and Cancellation Machinery
 description: Deep dive into promise_type, symmetric transfer, root node tracking, and cancel_scope internals.
 ---
 
-# Coroutine and Cancellation Machinery
 
 This document details the low-level coroutine promise types, intrusive data structures, and atomic state machines that govern task execution and cancellation in Coasio.
 
@@ -11,7 +10,7 @@ This document details the low-level coroutine promise types, intrusive data stru
 
 ## 1. The `coasio::task<T>::promise_type`
 
-Every [`coasio::task<T>`](file:///C:/dev/cpp/coasio/include/coasio/task.hpp) is driven by its internal `promise_type`. 
+Every [`coasio::task<T>`](https://github.com/coasio/coasio/blob/main/include/coasio/task.hpp) is driven by its internal `promise_type`. 
 
 ### Key Member Variables
 
@@ -57,7 +56,7 @@ When a background root task created by `spawn` finishes:
 
 To guarantee safe shutdown, the `runtime` must track every live spawned root task without unbounded dynamic allocations:
 
-* `promise_type` inherits from [`coasio::detail::root_node`](file:///C:/dev/cpp/coasio/include/coasio/detail/root_node.hpp).
+* `promise_type` inherits from [`coasio::detail::root_node`](https://github.com/coasio/coasio/blob/main/include/coasio/detail/root_node.hpp).
 * Each node contains intrusive `next_`, `prev_`, and `scope_raw_` pointers.
 * When a task is spawned via `_spawn(task)`:
   ```cpp
@@ -111,5 +110,5 @@ Scope Mutex (scope_->mtx_) -> Primitive Mutex (e.g. semaphore, channel)
 
 ## 5. Related Pages
 
-* [Cancellation Reference](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/cancellation.mdx) — Public cancellation API.
-* [Lifetimes and Safe Shutdown](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/lifetimes.mdx) — How root drainage protects against use-after-free.
+* [Cancellation Reference](/reference/cancellation/) — Public cancellation API.
+* [Lifetimes and Safe Shutdown](/concepts/lifetimes/) — How root drainage protects against use-after-free.

@@ -3,12 +3,11 @@ title: Runtime Internals Overview
 description: Architectural overview, subsystem organization, and internal design of Coasio.
 ---
 
-# Runtime Internals Overview
 
 This section documents the internal implementation, concurrency algorithms, and design choices of Coasio.
 
 :::note
-The pages in this section describe **internal implementation choices** that help contributors and maintainers understand how the library works. These are separate from the user-facing contracts and guarantees promised in the [Core Concepts](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/tasks.mdx) and [Reference](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/index.mdx) sections.
+The pages in this section describe **internal implementation choices** that help contributors and maintainers understand how the library works. These are separate from the user-facing contracts and guarantees promised in the [Core Concepts](/concepts/tasks/) and [Reference](/reference/) sections.
 :::
 
 ---
@@ -40,14 +39,14 @@ The pages in this section describe **internal implementation choices** that help
 
 ## Internals Topics
 
-* **[Architecture and Role of Asio](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/architecture-and-asio.mdx)**
+* **[Architecture and Role of Asio](/internals/architecture-and-asio/)**
   Examines how Asio's `io_context` is isolated from coroutine execution and how the `async_op` bridge translates Asio completion handlers into coroutine resumptions.
 
-* **[Scheduler Design & Work Stealing](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/scheduler-and-work-stealing.mdx)**
+* **[Scheduler Design & Work Stealing](/internals/scheduler-and-work-stealing/)**
   Covers the worker thread loop, ring buffer queues, the 60-pop global polling interval, victim selection, and parking mechanics.
 
-* **[Coroutine & Cancellation Machinery](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/coroutine-and-cancellation.mdx)**
+* **[Coroutine & Cancellation Machinery](/internals/coroutine-and-cancellation/)**
   Analyzes `task<T>::promise_type`, symmetric transfer in `final_suspend`, intrusive root node tracking, and `cancel_scope` atomic callback dispatch.
 
-* **[Testing & Benchmarking Methodology](file:///C:/dev/cpp/coasio/docs/src/content/docs/internals/testing-and-benchmarks.mdx)**
+* **[Testing & Benchmarking Methodology](/internals/testing-and-benchmarks/)**
   Details the Catch2 test suite organization, stress testing, race condition detection, and smoke test methodologies.

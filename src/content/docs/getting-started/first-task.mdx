@@ -3,7 +3,6 @@ title: Your First Task
 description: Write, compile, and execute a minimal asynchronous coroutine with Coasio.
 ---
 
-# Your First Task
 
 This guide walks you through writing, compiling, and running your first asynchronous program using Coasio.
 
@@ -11,7 +10,7 @@ This guide walks you through writing, compiling, and running your first asynchro
 
 ## 1. Purpose
 
-In standard C++, starting an asynchronous coroutine requires an executor or runtime to drive its resumption and handle its lifecycle. Coasio provides the [`coasio::runtime`](file:///C:/dev/cpp/coasio/include/coasio/runtime.hpp) and [`coasio::task<T>`](file:///C:/dev/cpp/coasio/include/coasio/task.hpp) abstractions to make writing and driving coroutines straightforward.
+In standard C++, starting an asynchronous coroutine requires an executor or runtime to drive its resumption and handle its lifecycle. Coasio provides the [`coasio::runtime`](https://github.com/coasio/coasio/blob/main/include/coasio/runtime.hpp) and [`coasio::task<T>`](https://github.com/coasio/coasio/blob/main/include/coasio/task.hpp) abstractions to make writing and driving coroutines straightforward.
 
 ---
 
@@ -148,5 +147,5 @@ cmake --build build --config Release
 
 ## 8. Related Pages
 
-* [Core Concepts: Tasks](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/tasks.mdx) — Deep dive into `task<T>` design.
-* [Core Concepts: Awaiting and Spawning](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/awaiting-and-spawning.mdx) — Learn how to spawn independent background tasks.
+* [Core Concepts: Tasks](/concepts/tasks/) — Deep dive into `task<T>` design.
+* [Core Concepts: Awaiting and Spawning](/concepts/awaiting-and-spawning/) — Learn how to spawn independent background tasks.

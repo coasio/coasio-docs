@@ -3,9 +3,8 @@ title: Filesystem APIs Reference
 description: Complete API reference for Coasio file streams, random access files, and path operations.
 ---
 
-# Filesystem APIs Reference
 
-The [`coasio::filesystem`](file:///C:/dev/cpp/coasio/include/coasio/filesystem.hpp) namespace provides asynchronous file I/O streams and asynchronous mirrors of standard `std::filesystem` operations.
+The [`coasio::filesystem`](https://github.com/coasio/coasio/blob/main/include/coasio/filesystem.hpp) namespace provides asynchronous file I/O streams and asynchronous mirrors of standard `std::filesystem` operations.
 
 ---
 
@@ -63,10 +62,10 @@ Represents an open file supporting positional reads and writes without a global 
 | Method | Return Type | Description |
 | :--- | :--- | :--- |
 | `open(path, options)` | `task<std::expected<random_access_file, std::error_code>>` | Opens the random access file asynchronously. |
-| `read_at(offset, buffer)` | `async_op<size_t>` | Reads starting from `offset` until buffer is filled. |
+| `read(offset, buffer)` | `async_op<size_t>` | Reads starting from `offset` until buffer is filled. |
 | `read_some_at(offset, buffer)` | `async_op<size_t>` | Reads starting from `offset` up to buffer capacity. |
-| `write_at(offset, buffer)` | `async_op<size_t>` | Writes starting at `offset` until buffer is transmitted. |
-| `write_some_at(offset, buffer)` | `async_op<size_t>` | Writes starting at `offset`. |
+| `write(offset, buffer)` | `async_op<size_t>` | Writes starting at `offset` until buffer is transmitted. |
+| `write_some_at(offset, buffer)` | `async_op<size_t>` | Writes starting at `offset` up to buffer capacity. |
 | `size()` | `task<std::expected<uint64_t, std::error_code>>` | Queries file size. |
 | `resize(uint64_t size)` | `task<std::expected<void, std::error_code>>` | Truncates or extends the file. |
 | `sync_data()` / `sync_all()` | `task<std::expected<void, std::error_code>>` | Flushes data and metadata. |
@@ -117,5 +116,5 @@ The following free functions mirror `std::filesystem` operations, executing on t
 
 ## 6. Related Pages
 
-* [Guide: Work with Files Asynchronously](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/file-operations.mdx)
-* [Executing Blocking Work Safely](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/blocking-work.mdx)
+* [Guide: Work with Files Asynchronously](/guides/file-operations/)
+* [Executing Blocking Work Safely](/guides/blocking-work/)

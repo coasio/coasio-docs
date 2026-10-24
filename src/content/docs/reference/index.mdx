@@ -3,7 +3,6 @@ title: API Reference Overview
 description: Overview of Coasio public interfaces, runtime configuration, and Doxygen documentation.
 ---
 
-# API Reference Overview
 
 This reference section provides precise technical specifications for Coasio's public interfaces, runtime options, and error categories.
 
@@ -13,17 +12,17 @@ This reference section provides precise technical specifications for Coasio's pu
 
 | Namespace / Module | Header | Purpose |
 | :--- | :--- | :--- |
-| **[`coasio`](file:///C:/dev/cpp/coasio/include/coasio.hpp)** | `<coasio.hpp>` | Core runtime, `task<T>`, `spawn`, `block_on`. |
-| **[`coasio::time`](file:///C:/dev/cpp/coasio/include/coasio/time.hpp)** | `<coasio/time.hpp>` | Timers, `time::sleep`, time points. |
-| **[`coasio::net`](file:///C:/dev/cpp/coasio/include/coasio/net/tcp.hpp)** | `<coasio/net/tcp.hpp>`, `<coasio/net/udp.hpp>` | TCP and UDP sockets, listeners, endpoints, and resolvers. |
-| **[`coasio::filesystem`](file:///C:/dev/cpp/coasio/include/coasio/filesystem.hpp)** | `<coasio/filesystem.hpp>`, `<coasio/filesystem/file.hpp>` | Stream files, random access files, path operations. |
-| **[`coasio::sync`](file:///C:/dev/cpp/coasio/include/coasio/sync/semaphore.hpp)** | `<coasio/sync/semaphore.hpp>`, `<coasio/sync/mutex.hpp>`, `<coasio/sync/oneshot.hpp>` | Coroutine synchronization primitives and channels. |
+| **[`coasio`](https://github.com/coasio/coasio/blob/main/include/coasio.hpp)** | `<coasio.hpp>` | Core runtime, `task<T>`, `spawn`, `block_on`. |
+| **[`coasio::time`](https://github.com/coasio/coasio/blob/main/include/coasio/time.hpp)** | `<coasio/time.hpp>` | Timers, `time::sleep`, time points. |
+| **[`coasio::net`](https://github.com/coasio/coasio/blob/main/include/coasio/net/tcp.hpp)** | `<coasio/net/tcp.hpp>`, `<coasio/net/udp.hpp>` | TCP and UDP sockets, listeners, endpoints, and resolvers. |
+| **[`coasio::filesystem`](https://github.com/coasio/coasio/blob/main/include/coasio/filesystem.hpp)** | `<coasio/filesystem.hpp>`, `<coasio/filesystem/file.hpp>` | Stream files, random access files, path operations. |
+| **[`coasio::sync`](https://github.com/coasio/coasio/blob/main/include/coasio/sync/semaphore.hpp)** | `<coasio/sync/semaphore.hpp>`, `<coasio/sync/mutex.hpp>`, `<coasio/sync/oneshot.hpp>` | Coroutine synchronization primitives and channels. |
 
 ---
 
 ## 2. Runtime Configuration (`runtime_builder`)
 
-The [`coasio::runtime_builder`](file:///C:/dev/cpp/coasio/include/coasio/runtime.hpp#L395) class configures and instantiates the runtime:
+The [`coasio::runtime_builder`](https://github.com/coasio/coasio/blob/main/include/coasio/runtime.hpp#L395) class configures and instantiates the runtime:
 
 ```cpp
 #include <coasio.hpp>
@@ -45,18 +44,25 @@ coasio::runtime rt = coasio::runtime_builder{}
 
 ---
 
-## 3. Doxygen Documentation
+## 3. Header Organization
 
-For an exhaustive, symbol-by-symbol index generated directly from C++ comments and declarations, consult the Doxygen reference documentation:
+Coasio is designed as a modular library with clean top-level and subsystem headers:
 
-* [Browse Doxygen Reference (Local Build)](file:///C:/dev/cpp/coasio/build/docs/html/index.html) *(generated when building with Doxygen enabled)*
-* [Repository Source Code](https://github.com/coasio/coasio)
+* [`<coasio.hpp>`](https://github.com/coasio/coasio/blob/main/include/coasio.hpp) — Umbrella header including core types (`task<T>`, `runtime`, `spawn`, `block_on`).
+* [`<coasio/time.hpp>`](https://github.com/coasio/coasio/blob/main/include/coasio/time.hpp) — Timers (`timer`), asynchronous sleep (`time::sleep`).
+* [`<coasio/net/tcp.hpp>`](https://github.com/coasio/coasio/blob/main/include/coasio/net/tcp.hpp) — TCP sockets, listeners, endpoints, and resolvers.
+* [`<coasio/net/udp.hpp>`](https://github.com/coasio/coasio/blob/main/include/coasio/net/udp.hpp) — UDP datagram sockets and endpoints.
+* [`<coasio/filesystem.hpp>`](https://github.com/coasio/coasio/blob/main/include/coasio/filesystem.hpp) & [`<coasio/filesystem/file.hpp>`](https://github.com/coasio/coasio/blob/main/include/coasio/filesystem/file.hpp) — Asynchronous filesystem path functions, stream files (`file`), and random access files (`random_access_file`).
+* [`<coasio/sync/mutex.hpp>`](https://github.com/coasio/coasio/blob/main/include/coasio/sync/mutex.hpp) & [`<coasio/sync/semaphore.hpp>`](https://github.com/coasio/coasio/blob/main/include/coasio/sync/semaphore.hpp) — Asynchronous synchronization primitives.
+* [`<coasio/sync/oneshot.hpp>`](https://github.com/coasio/coasio/blob/main/include/coasio/sync/oneshot.hpp) — One-shot channels (`make_oneshot`).
+* [`<coasio/combinators.hpp>`](https://github.com/coasio/coasio/blob/main/include/coasio/combinators.hpp) — `select`, `race`, `join`, and `timeout`.
 
 ---
 
 ## 4. Reference Topics
 
-* **[Error Handling](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/errors.mdx)** — `coasio::error`, `std::error_code` integration, and exception rules.
-* **[Cancellation Semantics](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/cancellation.mdx)** — `cancel_scope`, `cancel_guard`, and Asio slot bindings.
-* **[Networking APIs](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/networking.mdx)** — `tcp::listener`, `tcp::socket`, `udp::socket`.
-* **[Filesystem APIs](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/filesystem.mdx)** — `file`, `random_access_file`, `open_options`.
+* **[Error Handling](/reference/errors/)** — `coasio::error`, `std::error_code` integration, and exception rules.
+* **[Cancellation Semantics](/reference/cancellation/)** — `cancel_scope`, `cancel_guard`, and Asio slot bindings.
+* **[Timers & Clocks](/reference/timers/)** — `coasio::time::timer`, asynchronous sleep, and periodic deadlines.
+* **[Networking APIs](/reference/networking/)** — `tcp::listener`, `tcp::socket`, `udp::socket`.
+* **[Filesystem APIs](/reference/filesystem/)** — `file`, `random_access_file`, `open_options`.

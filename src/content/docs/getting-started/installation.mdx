@@ -3,7 +3,6 @@ title: Installation and Setup
 description: Supported compilers, C++ standard requirements, and CMake integration for Coasio.
 ---
 
-# Installation and Setup
 
 This page guides you through the requirements and CMake setup needed to include Coasio in your C++ projects.
 
@@ -34,7 +33,7 @@ Before installing Coasio, ensure your development environment satisfies the foll
 
 :::note
 Clang with `libc++` has known issues with certain C++23 coroutine traits and explicit object parameter extensions in current versions. If targeting Clang, build against GCC's `libstdc++`.
-::
+:::
 
 ---
 
@@ -79,7 +78,7 @@ target_link_libraries(my_coasio_app PRIVATE coasio::coasio)
    * C++23 compile features (`cxx_std_23`).
    * Dependency on standalone Asio (`ASIO_STANDALONE` and `ASIO_NO_DEPRECATED` flags).
    * System thread library dependencies (`Threads::Threads`).
-2. **Asio Auto-fetching:** If a target named `asio` does not already exist when Coasio's `CMakeLists.txt` is processed, Coasio automatically downloads and configures standalone Asio `1.38.2`.
+2. **Asio Auto-fetching:** Coasio automatically declares and downloads standalone Asio `1.38.2` via CMake `FetchContent`, creating an `asio` interface target with `ASIO_STANDALONE` and `ASIO_NO_DEPRECATED`.
 
 ---
 
@@ -110,5 +109,5 @@ cmake --build build --config Release
 
 ## 7. Related Pages
 
-* [Your First Task](file:///C:/dev/cpp/coasio/docs/src/content/docs/getting-started/first-task.mdx) — Write and run your first coroutine.
-* [Core Concepts: Tasks](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/tasks.mdx) — Understand `coasio::task<T>`.
+* [Your First Task](/getting-started/first-task/) — Write and run your first coroutine.
+* [Core Concepts: Tasks](/concepts/tasks/) — Understand `coasio::task<T>`.

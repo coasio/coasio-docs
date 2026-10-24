@@ -3,7 +3,6 @@ title: Awaiting and Spawning
 description: Task composition with co_await, blocking execution with block_on, and concurrent tasks with spawn.
 ---
 
-# Awaiting and Spawning
 
 Coasio provides two distinct ways to execute asynchronous coroutines: **sequential composition** via `co_await`, and **concurrent task creation** via `spawn`.
 
@@ -22,7 +21,7 @@ Understanding the distinction between awaiting, spawning, and blocking is fundam
 
 ## 2. Prerequisites
 
-* [`coasio::task<T>`](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/tasks.mdx) basics.
+* [`coasio::task<T>`](/concepts/tasks/) basics.
 * Familiarity with `std::expected` and `std::error_code`.
 
 ---
@@ -93,9 +92,9 @@ When you write `T val = co_await my_task();`:
 
 When you invoke `coasio::spawn(task)` (or `rt.spawn(task)`):
 * The task is **detached** from the current coroutine's immediate call chain.
-* The task is registered as a new **root task** in the runtime and assigned its own independent [`cancel_scope`](file:///C:/dev/cpp/coasio/include/coasio/cancel_scope.hpp).
+* The task is registered as a new **root task** in the runtime and assigned its own independent [`cancel_scope`](https://github.com/coasio/coasio/blob/main/include/coasio/cancel_scope.hpp).
 * It is scheduled on the worker thread pool and begins executing concurrently.
-* It returns a [`coasio::JoinHandle<T>`](file:///C:/dev/cpp/coasio/include/coasio/runtime.hpp#L445).
+* It returns a [`coasio::JoinHandle<T>`](https://github.com/coasio/coasio/blob/main/include/coasio/runtime.hpp#L445).
 
 ### `JoinHandle<T>`: Observing & Aborting Tasks
 
@@ -103,8 +102,8 @@ When you invoke `coasio::spawn(task)` (or `rt.spawn(task)`):
 
 * **`co_await handle.join()`:** Asynchronously awaits the completion of the spawned task. Returns `std::expected<T, std::error_code>`.
   * If the task returned a value of type `T`, the result contains the value.
-  * If the task threw an exception, `join()` **rethinks and rethrows** that exception on the joining coroutine.
-  * If the task was cancelled, it yields `std::unexpected(coasio::error::cancelled)`.
+  * If the task threw an exception, `join()` **rethrows** that exception on the joining coroutine.
+  * `join()` awaits the spawned task through an uncancellable channel (`detail::uncancellable`); cancellation of the joining coroutine does not abort the join or drop the child outcome.
 * **`handle.abort()`:** Signals cancellation to the spawned task's `cancel_scope`.
 * **`handle.cancelled()`:** Returns `true` if cancellation was requested.
 
@@ -140,6 +139,6 @@ When you invoke `coasio::spawn(task)` (or `rt.spawn(task)`):
 
 ## 7. Related Pages
 
-* [Scheduling and Workers](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/scheduling.mdx) — How spawned tasks are dispatched across worker threads.
-* [Lifetimes and Captures](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/lifetimes.mdx) — Safe capture patterns when passing lambdas to `spawn`.
-* [Cancellation](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/cancellation.mdx) — Cancellation scopes and token propagation.
+* [Scheduling and Workers](/concepts/scheduling/) — How spawned tasks are dispatched across worker threads.
+* [Lifetimes and Captures](/concepts/lifetimes/) — Safe capture patterns when passing lambdas to `spawn`.
+* [Cancellation](/reference/cancellation/) — Cancellation scopes and token propagation.

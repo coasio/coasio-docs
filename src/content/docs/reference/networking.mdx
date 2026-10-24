@@ -3,9 +3,8 @@ title: Networking APIs Reference
 description: Complete API reference for Coasio TCP, UDP, endpoints, and resolvers.
 ---
 
-# Networking APIs Reference
 
-The [`coasio::net`](file:///C:/dev/cpp/coasio/include/coasio/net/tcp.hpp) module provides asynchronous socket abstractions built on top of standalone Asio.
+The [`coasio::net`](https://github.com/coasio/coasio/blob/main/include/coasio/net/tcp.hpp) module provides asynchronous socket abstractions built on top of standalone Asio.
 
 ---
 
@@ -33,6 +32,9 @@ Represents a listening TCP acceptor socket.
 | `accept()` | `listen_awaiter` $\rightarrow$ `std::expected<tcp::socket, std::error_code>` | Asynchronously accepts a new TCP connection. Supports cancellation. |
 | `wait(wait_type)` | `async_op<void>` | Asynchronously waits for read/write/error readiness. |
 | `close()` | `std::expected<void, std::error_code>` | Closes the acceptor socket. |
+| `is_open()` | `bool` | Returns `true` if the acceptor socket is currently open. |
+| `local_endpoint()` | `std::expected<endpoint, std::error_code>` | Returns the local endpoint the listener is bound to. |
+| `native_handle()` | `auto` | Accesses the native underlying OS socket handle. |
 | `asio_handle()` | `asio::ip::tcp::acceptor&` | Accesses the underlying Asio acceptor. |
 
 ### `coasio::net::tcp::socket`
@@ -52,8 +54,10 @@ Represents a connected or un-connected TCP stream socket.
 | `available()` | `std::expected<size_t, std::error_code>` | Returns the number of bytes available to read immediately without blocking. |
 | `shutdown(shutdown_type)` | `std::expected<void, std::error_code>` | Shuts down `shutdown_receive`, `shutdown_send`, or `shutdown_both`. |
 | `close()` | `std::expected<void, std::error_code>` | Closes the socket. |
+| `is_open()` | `bool` | Returns `true` if the socket is currently open. |
 | `remote_endpoint()` | `std::expected<endpoint, std::error_code>` | Returns the remote peer endpoint. |
 | `local_endpoint()` | `std::expected<endpoint, std::error_code>` | Returns the local endpoint. |
+| `native_handle()` | `auto` | Accesses the native underlying OS socket handle. |
 | `asio_handle()` | `asio::ip::tcp::socket&` | Accesses the underlying Asio socket object. |
 
 ---
@@ -74,7 +78,14 @@ Represents an asynchronous UDP datagram socket.
 | `receive_from(buffer, endpoint &sender)` | `async_op<size_t>` | Receives a datagram and captures the sender endpoint. |
 | `send(buffer, flags = {})` | `async_op<size_t>` | Sends a datagram to a connected peer. |
 | `send_to(buffer, const endpoint &target)` | `async_op<size_t>` | Sends a datagram to a specific remote endpoint. |
+| `wait(wait_type)` | `async_op<void>` | Asynchronously waits for read/write/error readiness. |
+| `available()` | `std::expected<size_t, std::error_code>` | Returns the number of bytes available to read immediately without blocking. |
+| `shutdown(shutdown_type)` | `std::expected<void, std::error_code>` | Shuts down `shutdown_receive`, `shutdown_send`, or `shutdown_both`. |
 | `close()` | `std::expected<void, std::error_code>` | Closes the UDP socket. |
+| `is_open()` | `bool` | Returns `true` if the UDP socket is currently open. |
+| `remote_endpoint()` | `std::expected<endpoint, std::error_code>` | Returns the remote peer endpoint. |
+| `local_endpoint()` | `std::expected<endpoint, std::error_code>` | Returns the local endpoint. |
+| `native_handle()` | `auto` | Accesses the native underlying OS socket handle. |
 | `asio_handle()` | `asio::ip::udp::socket&` | Accesses the underlying Asio socket. |
 
 ---
@@ -83,13 +94,16 @@ Represents an asynchronous UDP datagram socket.
 
 ### `coasio::net::ip_address`
 
-Represents an IPv4 or IPv6 address.
+Represents an IPv4 or IPv6 address wrapping `asio::ip::address`.
 
-* `ip_address::v4_any()`: `0.0.0.0`
-* `ip_address::v4_loopback()`: `127.0.0.1`
-* `ip_address::v6_any()`: `::`
-* `ip_address::v6_loopback()`: `::1`
-* `ip_address::from_string(std::string_view)`: Parses an IP address string.
+* `ip_address::v4()`: Returns `0.0.0.0` (`address_v4::any()`).
+* `ip_address::v6()`: Returns `::` (`address_v6::any()`).
+* `ip_address::v4(uint32_t addr)`: Creates an IPv4 address from host byte order integer.
+* `ip_address::v6(std::array<uint8_t, 16> addr)`: Creates an IPv6 address from byte array.
+* `ip_address::from_string(std::string_view ip)`: Parses an IP string into `std::expected<ip_address, std::error_code>`. Example: `from_string("127.0.0.1")` or `from_string("::1")`.
+* `is_v4()`, `is_v6()`, `is_loopback()`, `is_multicast()`, `is_unspecified()`: Inspection queries.
+* `to_string()`: Returns human-readable string representation.
+* `asio_address()`: Direct access to underlying `asio::ip::address`.
 
 ### Resolvers
 
@@ -116,5 +130,5 @@ auto n = co_await sock.read_some(buf); // Perfectly valid
 
 ## 6. Related Pages
 
-* [Guide: Perform Asynchronous TCP Operations](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/tcp-operations.mdx) — Hands-on examples.
-* [Error Types and Propagation](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/errors.mdx) — Socket error codes.
+* [Guide: Perform Asynchronous TCP Operations](/guides/tcp-operations/) — Hands-on examples.
+* [Error Types and Propagation](/reference/errors/) — Socket error codes.

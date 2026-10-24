@@ -3,7 +3,6 @@ title: Lifetimes and Safe Shutdown
 description: Coroutine frame lifetimes, avoiding lambda capture pitfalls, and runtime shutdown semantics.
 ---
 
-# Lifetimes and Safe Shutdown
 
 Understanding object lifetimes is critical in asynchronous coroutines. Unlike regular functions where variables exist on the stack until return, coroutines suspend and resume asynchronously, often outliving their callers.
 
@@ -15,13 +14,13 @@ This page explains:
 1. How coroutine frame lifetimes are managed.
 2. The critical C++ pitfall: **temporary coroutine lambdas with dangling captures**.
 3. The two safe idiomatic patterns for capturing state.
-4. What happens when a [`coasio::runtime`](file:///C:/dev/cpp/coasio/include/coasio/runtime.hpp) object is destroyed.
+4. What happens when a [`coasio::runtime`](https://github.com/coasio/coasio/blob/main/include/coasio/runtime.hpp) object is destroyed.
 
 ---
 
 ## 2. Prerequisites
 
-* [`coasio::task<T>`](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/tasks.mdx) and move semantics.
+* [`coasio::task<T>`](/concepts/tasks/) and move semantics.
 * Familiarity with C++ lambda closures.
 
 ---
@@ -135,5 +134,5 @@ runtime::~runtime()
 
 ## 8. Related Pages
 
-* [Awaiting and Spawning](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/awaiting-and-spawning.mdx) — Managing background tasks with `JoinHandle`.
-* [Cancellation Semantics](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/cancellation.mdx) — How cancellation tokens propagate through task trees.
+* [Awaiting and Spawning](/concepts/awaiting-and-spawning/) — Managing background tasks with `JoinHandle`.
+* [Cancellation Semantics](/reference/cancellation/) — How cancellation tokens propagate through task trees.

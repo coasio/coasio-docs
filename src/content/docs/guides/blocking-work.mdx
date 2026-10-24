@@ -3,9 +3,8 @@ title: Execute Blocking Work Safely
 description: Offload CPU-intensive or legacy synchronous blocking calls using spawn_blocking.
 ---
 
-# Execute Blocking Work Safely
 
-Coasio provides [`coasio::spawn_blocking`](file:///C:/dev/cpp/coasio/include/coasio/detail/blocking/spawn_blocking.hpp) to offload synchronous or CPU-intensive work to a dedicated thread pool without starving coroutine workers.
+Coasio provides [`coasio::spawn_blocking`](https://github.com/coasio/coasio/blob/main/include/coasio/detail/blocking/spawn_blocking.hpp) to offload synchronous or CPU-intensive work to a dedicated thread pool without starving coroutine workers.
 
 ---
 
@@ -23,7 +22,7 @@ If a coroutine blocks a worker thread with synchronous code, other coroutines sc
 ## 2. Prerequisites
 
 * Basic understanding of thread pools.
-* [`coasio::task<T>`](file:///C:/dev/cpp/coasio/docs/src/content/docs/concepts/tasks.mdx) and `std::expected`.
+* [`coasio::task<T>`](/concepts/tasks/) and `std::expected`.
 
 ---
 
@@ -76,7 +75,7 @@ int main() {
 ## 4. Explanation
 
 1. **`coasio::spawn_blocking(callable)`:**
-   * Wraps the callable in a control block and enqueues it onto the runtime's dedicated [`detail::blocking::pool`](file:///C:/dev/cpp/coasio/include/coasio/detail/blocking/pool.hpp).
+   * Wraps the callable in a control block and enqueues it onto the runtime's dedicated [`detail::blocking::pool`](https://github.com/coasio/coasio/blob/main/include/coasio/detail/blocking/pool.hpp).
    * Suspends the calling coroutine without blocking the coroutine worker thread.
    * Runs the callable on an available thread in the blocking thread pool.
 2. **Completion & Resumption:**
@@ -90,7 +89,7 @@ int main() {
 
 ### Cancellation
 
-`spawn_blocking` integrates with Coasio's [`cancel_scope`](file:///C:/dev/cpp/coasio/include/coasio/cancel_scope.hpp):
+`spawn_blocking` integrates with Coasio's [`cancel_scope`](https://github.com/coasio/coasio/blob/main/include/coasio/cancel_scope.hpp):
 * **While queued:** If the enclosing task is cancelled *before* a blocking worker thread picks up the job, the job is dequeued and cancelled immediately. The `co_await` expression resumes with `std::unexpected(coasio::error::cancelled)`.
 * **While running:** Once execution has commenced on a blocking worker thread, the thread continues to finish the C++ function (threads cannot be forcefully interrupted safely in C++).
 
@@ -122,5 +121,5 @@ If the callable throws an unhandled C++ exception:
 
 ## 8. Related Pages
 
-* [Runtime Configuration](file:///C:/dev/cpp/coasio/docs/src/content/docs/reference/index.mdx) — Configuring pool sizes.
-* [Filesystem Operations](file:///C:/dev/cpp/coasio/docs/src/content/docs/guides/file-operations.mdx) — How Coasio uses `spawn_blocking` internally for path operations.
+* [Runtime Configuration](/reference/) — Configuring pool sizes.
+* [Filesystem Operations](/guides/file-operations/) — How Coasio uses `spawn_blocking` internally for path operations.
