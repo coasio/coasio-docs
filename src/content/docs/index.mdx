@@ -84,15 +84,15 @@ coasio::task<void> start_server(uint16_t port) {
     Pure C++23 `co_await` and `task<T>`. Clean standard types, explicit cancellation scopes, and structured task lifecycles.
   </Card>
 
-  <Card title="Dual-Engine Architecture" icon="workflow">
+  <Card title="Dual-Engine Architecture" icon="setting">
     Asio runs the I/O event demultiplexer (epoll/kqueue/IOCP). A dedicated thread pool runs your coroutines. Network polling never starves compute, and compute never starves I/O.
   </Card>
 
-  <Card title="Structured Lifetimes" icon="shield">
+  <Card title="Structured Lifetimes" icon="approve-check-circle">
     Child tasks do not outlive parent scopes by surprise. Cancellation propagates cooperatively down the task tree so sockets and resources close cleanly.
   </Card>
 
-  <Card title="Standalone Asio Backend" icon="network">
+  <Card title="Standalone Asio Backend" icon="server">
     CoAsio is built directly on standalone Asio (1.38+) for OS-native multiplexing without imposing external dependencies or heavy macro abstractions.
   </Card>
 </CardGrid>
