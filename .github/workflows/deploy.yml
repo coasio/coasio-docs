@@ -22,7 +22,7 @@ jobs:
       image: node:22-alpine
     steps:
       - name: Install build tools & compatibility libraries
-        run: apk add --no-cache git libc6-compat gcompat
+        run: apk add --no-cache git libc6-compat gcompat tar
 
       - name: Checkout repository
         uses: actions/checkout@v4

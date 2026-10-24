@@ -5,7 +5,7 @@ import starlight from '@astrojs/starlight';
 // https://astro.build/config
 export default defineConfig({
 	site: 'https://coasio.github.io',
-	base: '/',
+	base: process.env.CI ? '/coasio-docs' : '/',
 
 	integrations: [
 		starlight({
