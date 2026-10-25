@@ -94,7 +94,7 @@ When you invoke `coasio::spawn(task)` (or `rt.spawn(task)`):
 * The task is **detached** from the current coroutine's immediate call chain.
 * The task is registered as a new **root task** in the runtime and assigned its own independent [`cancel_scope`](https://github.com/coasio/coasio/blob/main/include/coasio/cancel_scope.hpp).
 * It is scheduled on the worker thread pool and begins executing concurrently.
-* It returns a [`coasio::JoinHandle<T>`](https://github.com/coasio/coasio/blob/main/include/coasio/runtime.hpp#L445).
+* It returns a [`coasio::JoinHandle<T>`](https://github.com/coasio/coasio/blob/main/include/coasio/runtime.hpp#L446).
 
 ### `JoinHandle<T>`: Observing & Aborting Tasks
 

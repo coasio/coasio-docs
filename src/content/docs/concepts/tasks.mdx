@@ -72,7 +72,7 @@ When a function returning `coasio::task<T>` is invoked:
 
 No user code inside the coroutine body executes until the task is either:
 * `co_await`ed by another running task, or
-* Submitted to the runtime via [`rt.spawn(...)`](https://github.com/coasio/coasio/blob/main/include/coasio/runtime.hpp#L309).
+* Submitted to the runtime via [`rt.spawn(...)`](https://github.com/coasio/coasio/blob/main/include/coasio/runtime.hpp#L310).
 
 ### Move-Only and Rvalue `co_await`
 

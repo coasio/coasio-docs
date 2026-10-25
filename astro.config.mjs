@@ -1,6 +1,7 @@
 // @ts-check
 import { defineConfig } from 'astro/config';
 import starlight from '@astrojs/starlight';
+import { starlightBasePath } from 'starlight-base-path';
 
 // https://astro.build/config
 export default defineConfig({
@@ -10,6 +11,7 @@ export default defineConfig({
 	integrations: [
 		starlight({
 			title: 'CoAsio',
+			plugins: [starlightBasePath()],
 			description: 'A C++23 coroutine runtime built on Asio, with a separate scheduler for coroutine execution.',
 			social: [
 				{ icon: 'github', label: 'GitHub', href: 'https://github.com/coasio/coasio' }
